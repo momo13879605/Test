@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-10-09T18:58:35.039760+00:00",
+  "version": "15.0",
+  "interval": "1",
+  "chart_count": 2,
+  "charts": [
+    {
+      "index": 0,
+      "symbol": "BINANCE:BTCUSDT",
+      "interval": "1",
+      "match": true,
+      "match_reason": "exact_pro_name",
+      "files": [
+        "chart_00_BINANCE_BTCUSDT_20261009_185650_full.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_185650_candles.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_185650_indicators.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_185650_symbol_info.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_185650_stats.json"
+      ]
+    },
+    {
+      "index": 1,
+      "symbol": "BINANCE:ETHUSDT",
+      "interval": "1",
+      "match": true,
+      "match_reason": "exact_pro_name",
+      "files": [
+        "chart_01_BINANCE_ETHUSDT_20261009_185650_full.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_185650_candles.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_185650_indicators.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_185650_symbol_info.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_185650_stats.json"
+      ]
+    }
+  ]
+}

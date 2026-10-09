@@ -1,0 +1,80 @@
+{
+  "candles": 302,
+  "interval": "1",
+  "time_from": 1791554220,
+  "time_to": 1791572280,
+  "time_from_iso": "2026-10-09T13:57:00+00:00",
+  "time_to_iso": "2026-10-09T18:58:00+00:00",
+  "duration_hours": 5.017,
+  "duration_bars": 302,
+  "last": {
+    "open": 82448.01,
+    "high": 82448.01,
+    "low": 82446.0,
+    "close": 82446.01,
+    "volume": 0.85383
+  },
+  "high_max": 83304.93,
+  "low_min": 82329.6,
+  "close_max": 83304.93,
+  "close_min": 82333.26,
+  "average_close": 82800.9656622516,
+  "range": 975.3299999999872,
+  "range_percent": 1.1793,
+  "change_from_first_candle": -259.99,
+  "change_from_first_candle_percent": -0.3144,
+  "volatility_std_pct": 0.047016,
+  "volume_total": 2588.20795,
+  "volume_avg": 8.570225,
+  "volume_max": 35.37779,
+  "atr_14": 38.7719636644,
+  "atr_14_pct": 0.047,
+  "bb_width_pct": 0.270044,
+  "annualized_volatility_pct": 34.0852,
+  "latest_indicators": {
+    "MACD": {
+      "time": 1791572280,
+      "values": [
+        -8.330366236375994,
+        -5.5943996949301145,
+        -2.7359665414458796
+      ]
+    },
+    "StochasticRSI": {
+      "time": 1791572280,
+      "values": [
+        12.961692348239842,
+        20.701745622977217
+      ]
+    },
+    "Volume": {
+      "time": 1791572280,
+      "values": [
+        0.85383,
+        1.0,
+        6.821654499999871
+      ]
+    },
+    "RSI": {
+      "time": 1791572280,
+      "values": [
+        43.13978431517364
+      ]
+    }
+  },
+  "quote_lp": 82446.0,
+  "quote_ch": 691.55,
+  "quote_chp": 0.85,
+  "quote_volume": 10102.6702,
+  "quote_high_price": 83528.98,
+  "quote_low_price": 81603.52,
+  "quote_open_price": 81754.46,
+  "quote_bid": 82446.0,
+  "quote_ask": 82446.01,
+  "quote_current_session": "market",
+  "quote_update_mode": "streaming",
+  "quote_description": "Bitcoin / TetherUS",
+  "symbol_timezone": "Etc/UTC",
+  "symbol_pricescale": 100,
+  "symbol_type": "spot"
+}

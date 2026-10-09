@@ -1,0 +1,25 @@
+{
+  "fractional": false,
+  "short_description": "Bitcoin / TetherUS",
+  "pointvalue": 1.0,
+  "session": "24x7",
+  "session_display": "24x7",
+  "minmov": 1,
+  "minmove2": 0,
+  "description": "Bitcoin / TetherUS",
+  "listed_exchange": "BINANCE",
+  "timezone": "Etc/UTC",
+  "full_name": "BINANCE:BTCUSDT",
+  "currency_code": "USDT",
+  "has_intraday": true,
+  "exchange": "Binance",
+  "typespecs": [
+    "crypto"
+  ],
+  "pro_name": "BINANCE:BTCUSDT",
+  "base_currency": "BTC",
+  "is_tradable": true,
+  "pricescale": 100,
+  "type": "spot",
+  "name": "BTCUSDT"
+}

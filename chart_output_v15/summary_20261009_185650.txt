@@ -1,9 +1,9 @@
 ==============================================================================
-📊 TradingView Multi-Chart Reader v14.0 - Summary
+📊 TradingView Multi-Chart Reader v15.0 - Summary
 ==============================================================================
 
 Shell URL:    https://source-donii.ir/tread/index.html
-Timestamp:    2026-10-09T16:09:37.490737+00:00
+Timestamp:    2026-10-09T18:58:35.042738+00:00
 Interval:     1 minute
 Chart count:  2
 Panels:       2/2
@@ -14,23 +14,23 @@ dedup=True  utc=True
 ──────────────────────────────────────────────────────────────────────────────
 [WebSocket Stats]
 ──────────────────────────────────────────────────────────────────────────────
-Total messages:  487
+Total messages:  458
 Message types:
-   du                               : 207
-   qsd                              : 186
+   du                               : 195
+   qsd                              : 169
    create_study                     : 10
    study_loading                    : 10
    study_completed                  : 10
    quote_completed                  : 8
    quote_add_symbols                : 6
-   quote_fast_symbols               : 5
-   timescale_update                 : 5
+   timescale_update                 : 6
    quote_create_session             : 4
+   quote_fast_symbols               : 4
    quote_remove_symbols             : 4
    ?                                : 2
-   set_data_quality                 : 2
    set_auth_token                   : 2
    set_locale                       : 2
+   set_data_quality                 : 2
    chart_create_session             : 2
    switch_timezone                  : 2
    resolve_symbol                   : 2
@@ -61,43 +61,44 @@ Exchange:           Binance
 Timezone:           Etc/UTC
 Pricescale:         100
 Alignment:          candles 302/302  ind 302/402
+Known series:       ['0VwbmB', 'SaDmO7', 'gnEG4P', 'hvaZO6', 'oYAF95', 'sds_1']
 
   ── Statistics ──
-    last close:     82850.01
-    high max:       83528.98
-    low min:        82464.96
-    range:          1064.020000 (1.289%)
-    change (1st):   284.010000 (0.3440%)
-    volatility:     0.065170%
-    ATR(14):        41.086158 (0.0496%)
-    BB width:       0.2860%
-    Annualized vol: 47.2274%
-    volume total:   3737.31212
-    volume avg:     12.3752
+    last close:     82446.01
+    high max:       83304.93
+    low min:        82329.6
+    range:          975.330000 (1.179%)
+    change (1st):   -259.990000 (-0.3144%)
+    volatility:     0.047016%
+    ATR(14):        38.771964 (0.0470%)
+    BB width:       0.2700%
+    Annualized vol: 34.0852%
+    volume total:   2588.20795
+    volume avg:     8.5702
     duration:       5.02 hours
 
   ── Latest Indicators ──
-    StochasticRSI: [85.03013098112349, 92.41392065202439]
-    Volume      : [4.4272, 1.0, 8.78779399999987]
-    RSI         : [43.95761528280564]
-    MACD        : [-19.678986902174074, -26.373006051015103, 6.694019148841029]
+    MACD        : [-8.330366236375994, -5.5943996949301145, -2.7359665414458796]
+    StochasticRSI: [12.961692348239842, 20.701745622977217]
+    Volume      : [0.85383, 1.0, 6.821654499999871]
+    RSI         : [43.13978431517364]
 
   ── Quote Snapshot ──
-    lp                : 82850.01
-    bid               : 82854.0
-    ask               : 82854.01
-    ch                : 1095.56
-    chp               : 1.34
-    volume            : 8963.45407
+    lp                : 82446.0
+    bid               : 82446.0
+    ask               : 82446.01
+    ch                : 691.55
+    chp               : 0.85
+    volume            : 10102.6702
     high_price        : 83528.98
     low_price         : 81603.52
     current_session   : market
 
   ── Indicators Detail ──
-    X5gCrT      : StochasticRSI          (  302 pts)
-    al63SB      : Volume                 (  302 pts)
-    tRTdrj      : RSI                    (  302 pts)
-    qydJlQ      : MACD                   (  302 pts)
+    SaDmO7      : MACD                   (  302 pts) inputs={"fast length": 12, "slow length": 26, "source": "close", "signal smoothing": 9, "simple ma(oscillator)": false, "simple ma(signal line)": false}
+    0VwbmB      : StochasticRSI          (  302 pts) inputs={"K": 3, "D": 3, "RSI Length": 14, "Stochastic Length": 14, "RSI Source": "close"}
+    oYAF95      : Volume                 (  302 pts) inputs={"length": 20, "col_prev_close": false}
+    gnEG4P      : RSI                    (  302 pts) inputs={"length": 14, "source": "close"}
 
 ──────────────────────────────────────────────────────────────────────────────
 [CHART 2] BINANCE:ETHUSDT  (requested_interval=1)
@@ -106,48 +107,49 @@ Match:              ✅ YES (exact_pro_name)
 WS symbol:          BINANCE:ETHUSDT
 WS interval:        1
 iframe interval:    1
-Candles:            301
+Candles:            302
 Indicators:         4
 Symbol name:        Ethereum / TetherUS
 Exchange:           Binance
 Timezone:           Etc/UTC
 Pricescale:         100
-Alignment:          candles 301/301  ind 301/401
+Alignment:          candles 302/302  ind 302/402
+Known series:       ['UaeTXD', 'ksMAv6', 'oYHs9U', 'qdgk2b', 'sds_1', 'sqr4GG']
 
   ── Statistics ──
-    last close:     2492.27
-    high max:       2520.54
-    low min:        2476.87
-    range:          43.670000 (1.753%)
-    change (1st):   0.730000 (0.0293%)
-    volatility:     0.083515%
-    ATR(14):        1.515692 (0.0608%)
-    BB width:       0.3537%
-    Annualized vol: 60.5109%
-    volume total:   52574.0686
-    volume avg:     174.6647
-    duration:       5.00 hours
+    last close:     2482.39
+    high max:       2503.08
+    low min:        2478.3
+    range:          24.780000 (0.996%)
+    change (1st):   -5.230000 (-0.2102%)
+    volatility:     0.059087%
+    ATR(14):        1.469304 (0.0592%)
+    BB width:       0.3676%
+    Annualized vol: 42.8360%
+    volume total:   36172.4589
+    volume avg:     119.7764
+    duration:       5.02 hours
 
   ── Latest Indicators ──
-    Volume      : [39.7394, 1.0, 78.93447500000165]
-    RSI         : [57.1533381187638]
-    MACD        : [0.7584714673857889, 0.23751567370293247, 0.5209557936828564]
-    StochasticRSI: [90.02437345027607, 96.50724541360871]
+    MACD        : [-0.14018742463940725, 0.1176235398941364, -0.2578109645335437]
+    StochasticRSI: [9.231701720547909, 14.46782473033258]
+    Volume      : [20.5887, 0.0, 103.15696000000166]
+    RSI         : [43.66170162456205]
 
   ── Quote Snapshot ──
-    lp                : 2492.04
-    bid               : 2492.04
-    ask               : 2492.05
-    ch                : 17.24
-    chp               : 0.7
-    volume            : 136493.4783
+    lp                : 2482.28
+    bid               : 2482.27
+    ask               : 2482.28
+    ch                : 7.48
+    chp               : 0.3
+    volume            : 152263.6393
     high_price        : 2520.54
     low_price         : 2471.05
     current_session   : market
 
   ── Indicators Detail ──
-    NKcYQw      : Volume                 (  301 pts)
-    HSHi7C      : RSI                    (  301 pts)
-    UJPhon      : MACD                   (  301 pts)
-    4pleX3      : StochasticRSI          (  301 pts)
+    sqr4GG      : MACD                   (  302 pts) inputs={"fast length": 12, "slow length": 26, "source": "close", "signal smoothing": 9, "simple ma(oscillator)": false, "simple ma(signal line)": false}
+    UaeTXD      : StochasticRSI          (  302 pts) inputs={"K": 3, "D": 3, "RSI Length": 14, "Stochastic Length": 14, "RSI Source": "close"}
+    oYHs9U      : Volume                 (  302 pts) inputs={"length": 20, "col_prev_close": false}
+    ksMAv6      : RSI                    (  302 pts) inputs={"length": 14, "source": "close"}
 
