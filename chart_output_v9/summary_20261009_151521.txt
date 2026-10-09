@@ -1,0 +1,72 @@
+======================================================================
+Chart Extractor v9.0 - Summary
+======================================================================
+
+[1] BINANCE:BTCUSDT
+  duration:        31.02s
+  api_found:       False
+  api_source:      None
+  candles_api:     0
+  candles_ws:      301
+  indicators:      5
+  ws_messages:     102
+  ws_types:        {'?': 1, 'set_data_quality': 1, 'set_auth_token': 1, 'set_locale': 1, 'chart_create_session': 1, 'switch_timezone': 1, 'quote_create_session': 2, 'quote_add_symbols': 3, 'resolve_symbol': 1, 'create_series': 1, 'quote_fast_symbols': 2, 'qsd': 33, 'quote_completed': 4, 'series_loading': 2, 'symbol_resolved': 1, 'timescale_update': 3, 'series_completed': 2, 'quote_remove_symbols': 2, 'request_more_tickmarks': 1, 'request_more_data': 1, 'du': 21, 'quote_set_fields': 1, 'quote_hibernate_all': 1, 'create_study': 5, 'study_loading': 5, 'study_completed': 5}
+  last_price_ws:   82879.98
+  symbol_name:     Bitcoin / TetherUS
+  exchange:        Binance
+  api_attempts:    0
+  diag.TradingViewApi: keys=[linking]
+  diag.chartWidget: keys=[_activePaneWidget,_mainDiv,_parent,_elTooltipDiv,_paneWidgets,_timeAxisWidget,_paneSeparators,_controlBarNavigation]
+  diag.chartWidgetCollection: keys=[activeChartStyle,activeChartWidget,onAboutToBeDestroyed,clientId,_destroyed,_chartWidgetsDefs,_activeIndex,_globalDetachable]
+
+[2] BINANCE:ETHUSDT
+  duration:        31.1s
+  api_found:       False
+  api_source:      None
+  candles_api:     0
+  candles_ws:      301
+  indicators:      5
+  ws_messages:     104
+  ws_types:        {'?': 1, 'set_auth_token': 1, 'set_locale': 1, 'set_data_quality': 1, 'chart_create_session': 1, 'switch_timezone': 1, 'quote_create_session': 2, 'quote_add_symbols': 3, 'resolve_symbol': 1, 'create_series': 1, 'quote_fast_symbols': 3, 'qsd': 32, 'quote_completed': 4, 'series_loading': 2, 'symbol_resolved': 1, 'timescale_update': 3, 'series_completed': 2, 'quote_remove_symbols': 2, 'request_more_tickmarks': 1, 'request_more_data': 1, 'du': 21, 'quote_set_fields': 1, 'request_studies_metadata': 1, 'quote_hibernate_all': 1, 'studies_metadata': 1, 'create_study': 5, 'study_loading': 5, 'study_completed': 5}
+  last_price_ws:   82879.98
+  symbol_name:     Bitcoin / TetherUS
+  exchange:        Binance
+  api_attempts:    0
+  diag.TradingViewApi: keys=[linking]
+  diag.chartWidget: keys=[_activePaneWidget,_mainDiv,_parent,_elTooltipDiv,_paneWidgets,_timeAxisWidget,_paneSeparators,_controlBarNavigation]
+  diag.chartWidgetCollection: keys=[activeChartStyle,activeChartWidget,onAboutToBeDestroyed,clientId,_destroyed,_chartWidgetsDefs,_activeIndex,_globalDetachable]
+
+[3] FX:EURUSD
+  duration:        42.99s
+  api_found:       False
+  api_source:      None
+  candles_api:     0
+  candles_ws:      301
+  indicators:      5
+  ws_messages:     130
+  ws_types:        {'?': 1, 'set_data_quality': 1, 'set_auth_token': 1, 'set_locale': 1, 'chart_create_session': 1, 'switch_timezone': 1, 'quote_create_session': 2, 'quote_add_symbols': 3, 'resolve_symbol': 1, 'create_series': 1, 'quote_fast_symbols': 3, 'series_loading': 2, 'symbol_resolved': 1, 'qsd': 44, 'quote_completed': 4, 'timescale_update': 3, 'series_completed': 2, 'quote_remove_symbols': 2, 'request_more_tickmarks': 1, 'request_more_data': 1, 'du': 37, 'quote_set_fields': 1, 'create_study': 5, 'quote_hibernate_all': 1, 'study_loading': 5, 'study_completed': 5}
+  last_price_ws:   82887.04
+  symbol_name:     Bitcoin / TetherUS
+  exchange:        Binance
+  api_attempts:    0
+  diag.TradingViewApi: keys=[linking]
+  diag.chartWidget: keys=[_activePaneWidget,_mainDiv,_parent,_elTooltipDiv,_paneWidgets,_timeAxisWidget,_paneSeparators,_controlBarNavigation]
+  diag.chartWidgetCollection: keys=[activeChartStyle,activeChartWidget,onAboutToBeDestroyed,clientId,_destroyed,_chartWidgetsDefs,_activeIndex,_globalDetachable]
+
+[4] TVC:GOLD
+  duration:        37.32s
+  api_found:       False
+  api_source:      None
+  candles_api:     0
+  candles_ws:      301
+  indicators:      5
+  ws_messages:     117
+  ws_types:        {'?': 1, 'set_data_quality': 1, 'set_auth_token': 1, 'set_locale': 1, 'chart_create_session': 1, 'switch_timezone': 1, 'quote_create_session': 2, 'quote_add_symbols': 3, 'resolve_symbol': 1, 'create_series': 1, 'qsd': 40, 'quote_completed': 3, 'series_loading': 2, 'symbol_resolved': 1, 'timescale_update': 3, 'series_completed': 2, 'quote_remove_symbols': 2, 'request_more_tickmarks': 1, 'request_more_data': 1, 'quote_fast_symbols': 1, 'du': 31, 'quote_set_fields': 1, 'quote_hibernate_all': 1, 'create_study': 5, 'study_loading': 5, 'study_completed': 5}
+  last_price_ws:   82880.0
+  symbol_name:     Bitcoin / TetherUS
+  exchange:        Binance
+  api_attempts:    0
+  diag.TradingViewApi: keys=[linking]
+  diag.chartWidget: keys=[_activePaneWidget,_mainDiv,_parent,_elTooltipDiv,_paneWidgets,_timeAxisWidget,_paneSeparators,_controlBarNavigation]
+  diag.chartWidgetCollection: keys=[activeChartStyle,activeChartWidget,onAboutToBeDestroyed,clientId,_destroyed,_chartWidgetsDefs,_activeIndex,_globalDetachable]
+
