@@ -1,10 +1,11 @@
 """
-TradingView Data Extractor - Professional Edition
-==================================================
-استخراج کامل داده‌های چارت TradingView به همراه ذخیره‌سازی در JSON
+TradingView Chart Reader - Professional Edition v3.1
+====================================================
+استخراج کامل داده‌های چارت TradingView از داخل iframe
+با دسترسی به API داخلی widget برای اعمال ترسیمات
 
-نحوه اجرا:
-    python3 main.py
+اجرا:
+    python3 chart_reader.py
 """
 
 import asyncio
@@ -12,43 +13,35 @@ import json
 import os
 import re
 import sys
-import time
+import traceback
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import urlparse, parse_qs, unquote
 
-from playwright.async_api import async_playwright, Page, Response, BrowserContext
+from playwright.async_api import async_playwright, Page, Frame, Response
+
 
 # ======================================================================
-# ⚙️  تنظیمات اصلی (این بخش را ویرایش کنید)
+# ⚙️  تنظیمات اصلی
 # ======================================================================
 
-# 🔗 آدرس سایت TradingView خود را اینجا وارد کنید
 TARGET_URL = "https://source-donii.ir/tread/index.html"
-
-# 📁 پوشه خروجی برای ذخیره فایل‌ها
-OUTPUT_DIR = "tv_output"
-
-# ⏱️ مدت زمان انتظار برای بارگذاری کامل چارت (ثانیه)
-CHART_LOAD_WAIT = 10
-
-# 🖥️ حالت نمایش مرورگر (True = مخفی، False = نمایش)
+OUTPUT_DIR = "chart_output"
+WAIT_AFTER_LOAD = 12
+WAIT_IFRAME_LOAD = 10
+WAIT_MAX_IFRAME = 25           # حداکثر انتظار برای پیدا شدن iframe
 HEADLESS = True
+CAPTURE_WEBSOCKET = True
+MAX_WS_MESSAGES = 500
+MAX_API_CALLS = 200
+MAX_CANDLES = 1000             # حداکثر تعداد کندل استخراجی
 
-# 🌐 زبان صفحه
-LOCALE = "en-US"
-
-# 🎭 User-Agent مرورگر
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
 
 # ======================================================================
 # 🎨 رنگ‌های ترمینال
 # ======================================================================
 
-class Colors:
+class C:
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
@@ -60,414 +53,832 @@ class Colors:
     CYAN = "\033[96m"
     WHITE = "\033[97m"
 
+    # نام‌های کوتاه برای سازگاری
+    R = RESET
+    B = BOLD
+    D = DIM
+    GRN = GREEN
+    YEL = YELLOW
+    CYN = CYAN
+    WHT = WHITE
+    MAG = MAGENTA
 
-def c(text: str, color: str) -> str:
-    """رنگ‌آمیزی متن"""
-    return f"{color}{text}{Colors.RESET}"
+
+def log(msg: str = "", color: str = C.WHITE, indent: int = 0) -> None:
+    """چاپ پیام با رنگ و تورفتگی"""
+    print(" " * indent + f"{color}{msg}{C.RESET}")
+
+
+def section(title: str) -> None:
+    """چاپ یک خط جداکننده با عنوان"""
+    print()
+    log("━" * 68, C.DIM)
+    log(f"  {title}", C.BOLD + C.CYAN)
+    log("━" * 68, C.DIM)
 
 
 def banner() -> None:
-    """نمایش بنر شروع"""
     print()
-    print(c("╔" + "═" * 68 + "╗", Colors.CYAN))
-    print(c("║" + " " * 18 + "📊  TradingView Data Extractor  📊" + " " * 17 + "║", Colors.CYAN + Colors.BOLD))
-    print(c("║" + " " * 22 + "Professional Edition  v2.0" + " " * 21 + "║", Colors.CYAN))
-    print(c("╚" + "═" * 68 + "╝", Colors.CYAN))
+    print(f"{C.CYAN}╔{'═' * 68}╗{C.RESET}")
+    print(f"{C.CYAN}║{C.BOLD}{C.WHITE}     📊  TradingView Chart Reader - Professional v3.1     {C.RESET}{C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}╚{'═' * 68}╝{C.RESET}")
     print()
 
 
 # ======================================================================
-# 🎯 کلاس اصلی استخراج‌کننده
+# 🎯 کلاس اصلی
 # ======================================================================
 
-class TradingViewExtractor:
-    """استخراج‌کننده جامع داده‌های TradingView"""
+class TradingViewChartReader:
+    """خواننده حرفه‌ای چارت TradingView از داخل iframe"""
 
-    def __init__(self, url: str, output_dir: str = "tv_output"):
+    def __init__(self, url: str, output_dir: str = "chart_output"):
         self.url = url
         self.output_dir = output_dir
-        self.timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self.ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-        # ذخیره‌سازی داده‌های استخراج‌شده
         self.data: dict[str, Any] = {
             "meta": {
-                "url": url,
+                "source_url": url,
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 "timestamp_local": datetime.now().isoformat(),
-                "script_version": "2.0",
+                "script_version": "3.1",
             },
-            "page_info": {},
-            "dom_elements": {},
-            "network_responses": [],
-            "api_responses": {},
-            "console_logs": [],
-            "cookies": [],
-            "local_storage": {},
-            "session_storage": {},
-            "scripts_content": [],
-            "stylesheets": [],
-            "images": [],
-            "links": [],
-            "raw_html": "",
+            "iframe_info": {},
+            "widget_config": {},
+            "chart_data": {},
+            "candles": [],
+            "indicators": {},
+            "drawings": [],
+            "draw_test": {},
+            "symbol_info": {},
+            "websocket_messages": [],
+            "network_api_calls": [],
+            "canvas_info": [],
+            "page_dom": {},
+            "storage": {},
             "errors": [],
+            "warnings": [],
         }
 
-        # شمارنده‌های داخلی
-        self._response_count = 0
-        self._max_responses = 500  # حداکثر تعداد پاسخ‌های ذخیره‌شده
+        self._ws_messages: list[dict] = []
+        self._api_calls: list[dict] = []
 
     # ------------------------------------------------------------------
-    # 📡 رهگیری پاسخ‌های شبکه
+    # 🔧 ابزارهای کمکی
     # ------------------------------------------------------------------
-    async def _on_response(self, response: Response) -> None:
-        """ذخیره پاسخ‌های شبکه"""
+    def _warn(self, msg: str) -> None:
+        self.data["warnings"].append(msg)
+
+    def _err(self, stage: str, err: Any) -> None:
+        self.data["errors"].append({
+            "stage": stage,
+            "error": str(err),
+            "traceback": traceback.format_exc()[:2000],
+        })
+
+    # ------------------------------------------------------------------
+    # 🔗 پارس URL iframe
+    # ------------------------------------------------------------------
+    def _parse_iframe_url(self, iframe_src: str) -> dict[str, Any]:
+        result: dict[str, Any] = {"raw_url": iframe_src}
         try:
-            if self._response_count >= self._max_responses:
-                return
+            parsed = urlparse(iframe_src)
+            result["host"] = parsed.netloc
+            result["path"] = parsed.path
 
-            url = response.url
-            status = response.status
-            content_type = response.headers.get("content-type", "")
-
-            # فقط پاسخ‌های موفق و مهم
-            if status != 200:
-                return
-
-            # فقط پاسخ‌های JSON و APIهای مهم
-            is_interesting = (
-                "json" in content_type
-                or "tradingview.com" in url
-                or "/api/" in url
-                or "scanner" in url
-                or "quote" in url
-                or "history" in url
-                or "symbol" in url
-                or "indicator" in url
-            )
-
-            if not is_interesting:
-                return
-
-            entry = {
-                "url": url,
-                "status": status,
-                "content_type": content_type,
+            qs = parse_qs(parsed.query)
+            result["query_params"] = {
+                k: v[0] if len(v) == 1 else v for k, v in qs.items()
             }
 
-            # تلاش برای خواندن بدنه
-            try:
-                if "json" in content_type:
-                    body = await response.json()
-                    # محدود کردن حجم داده
-                    body_str = json.dumps(body, default=str)
-                    if len(body_str) > 100_000:
-                        entry["body_truncated"] = True
-                        entry["body_preview"] = body_str[:50_000]
-                    else:
-                        entry["body"] = body
-                elif "text" in content_type or "html" in content_type:
-                    text = await response.text()
-                    entry["body_preview"] = text[:10_000]
-                    entry["body_size"] = len(text)
-            except Exception:
-                entry["body_error"] = "unable to read body"
-
-            self.data["network_responses"].append(entry)
-            self._response_count += 1
-
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    # 🖥️ ثبت لاگ‌های کنسول مرورگر
-    # ------------------------------------------------------------------
-    def _on_console(self, msg) -> None:
-        """ذخیره پیام‌های کنسول"""
-        try:
-            self.data["console_logs"].append({
-                "type": msg.type,
-                "text": msg.text[:500],
-            })
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    # 🚨 ثبت خطاهای صفحه
-    # ------------------------------------------------------------------
-    def _on_page_error(self, error) -> None:
-        self.data["errors"].append({"type": "page_error", "message": str(error)})
-
-    # ------------------------------------------------------------------
-    # 🔍 استخراج جامع از DOM
-    # ------------------------------------------------------------------
-    async def _extract_dom(self, page: Page) -> dict[str, Any]:
-        """استخراج همه‌چیز از DOM"""
-        print(c("  🔍 استخراج داده‌های DOM...", Colors.CYAN))
-
-        result = await page.evaluate("""
-            () => {
-                const output = {};
-
-                // --- اطلاعات پایه صفحه ---
-                output.title = document.title;
-                output.url = window.location.href;
-                output.referrer = document.referrer;
-                output.readyState = document.readyState;
-                output.charset = document.characterSet;
-                output.lang = document.documentElement.lang;
-
-                // --- Meta tags ---
-                output.meta_tags = {};
-                document.querySelectorAll('meta').forEach(m => {
-                    const key = m.name || m.getAttribute('property') || m.getAttribute('http-equiv');
-                    if (key) output.meta_tags[key] = m.content;
-                });
-
-                // --- همه لینک‌ها ---
-                output.links = Array.from(document.querySelectorAll('a[href]')).map(a => ({
-                    href: a.href,
-                    text: a.textContent.trim().substring(0, 100),
-                    target: a.target
-                })).slice(0, 200);
-
-                // --- همه تصاویر ---
-                output.images = Array.from(document.querySelectorAll('img')).map(img => ({
-                    src: img.src,
-                    alt: img.alt,
-                    width: img.naturalWidth,
-                    height: img.naturalHeight
-                })).slice(0, 100);
-
-                // --- همه استایل‌شیت‌ها ---
-                output.stylesheets = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-                    .map(l => l.href);
-
-                // --- همه اسکریپت‌های خارجی ---
-                output.external_scripts = Array.from(document.querySelectorAll('script[src]'))
-                    .map(s => ({ src: s.src, async: s.async, defer: s.defer }));
-
-                // --- اسکریپت‌های inline ---
-                output.inline_scripts = Array.from(document.querySelectorAll('script:not([src])'))
-                    .map(s => s.textContent.substring(0, 2000))
-                    .filter(t => t.trim().length > 0)
-                    .slice(0, 50);
-
-                // --- استایل‌های inline ---
-                output.inline_styles = Array.from(document.querySelectorAll('style'))
-                    .map(s => s.textContent.substring(0, 3000))
-                    .slice(0, 30);
-
-                // --- داده‌های چارت TradingView ---
-                output.tv_data = {};
-
-                // عنوان نماد
-                const symbolTitle = document.querySelector('.title-l31H9iuA, [data-name="legend-source-title"]');
-                if (symbolTitle) output.tv_data.symbol_title = symbolTitle.textContent.trim();
-
-                // قیمت فعلی
-                const priceEls = document.querySelectorAll('.lastPrice-3pL2A3w0, .price-l31H9iuA, [class*="lastPrice"], [class*="price-"]');
-                output.tv_data.prices = Array.from(priceEls).map(el => ({
-                    text: el.textContent.trim(),
-                    className: el.className
-                })).slice(0, 10);
-
-                // تغییرات
-                const changeEls = document.querySelectorAll('[class*="change-"], [class*="Change-"]');
-                output.tv_data.changes = Array.from(changeEls).map(el => ({
-                    text: el.textContent.trim(),
-                    className: el.className
-                })).slice(0, 10);
-
-                // اندیکاتورهای legend
-                const legendItems = document.querySelectorAll('[data-name="legend-source-item"], [class*="legend"]');
-                output.tv_data.legend_items = Array.from(legendItems).map(el => ({
-                    text: el.textContent.trim().substring(0, 200),
-                    className: el.className
-                })).slice(0, 30);
-
-                // همه متن‌های قابل مشاهده در پنل کناری
-                const sidebar = document.querySelector('[class*="sidebar"], [class*="right-toolbar"], aside');
-                if (sidebar) {
-                    output.tv_data.sidebar_text = sidebar.innerText.substring(0, 5000);
-                }
-
-                // همه دکمه‌ها
-                output.buttons = Array.from(document.querySelectorAll('button')).map(b => ({
-                    text: b.textContent.trim().substring(0, 100),
-                    className: b.className,
-                    id: b.id,
-                    ariaLabel: b.getAttribute('aria-label'),
-                    title: b.getAttribute('title'),
-                    disabled: b.disabled
-                })).slice(0, 100);
-
-                // همه inputها
-                output.inputs = Array.from(document.querySelectorAll('input, select, textarea')).map(i => ({
-                    tag: i.tagName.toLowerCase(),
-                    type: i.type,
-                    name: i.name,
-                    id: i.id,
-                    placeholder: i.placeholder,
-                    value: (i.type === 'password' ? '***' : i.value)
-                })).slice(0, 100);
-
-                // کلاس‌های اصلی TradingView
-                const tvClasses = new Set();
-                document.querySelectorAll('[class*="chart"], [class*="tv-"], [class*="price"], [class*="symbol"]').forEach(el => {
-                    el.classList.forEach(cls => {
-                        if (cls.length > 3 && cls.length < 60) tvClasses.add(cls);
-                    });
-                });
-                output.tv_classes = Array.from(tvClasses).slice(0, 200);
-
-                // اندازه صفحه و وضعیت چارت
-                output.viewport = {
-                    width: window.innerWidth,
-                    height: window.innerHeight,
-                    scrollX: window.scrollX,
-                    scrollY: window.scrollY
-                };
-
-                // canvas‌های موجود (چارت اصلی معمولاً canvas است)
-                output.canvases = Array.from(document.querySelectorAll('canvas')).map(c => ({
-                    width: c.width,
-                    height: c.height,
-                    className: c.className,
-                    id: c.id
-                }));
-
-                return output;
-            }
-        """)
-
+            if parsed.fragment:
+                try:
+                    hash_params = json.loads(unquote(parsed.fragment))
+                    result["hash_params"] = hash_params
+                    result["symbol"] = hash_params.get("symbol")
+                    result["interval"] = hash_params.get("interval")
+                    result["studies_raw"] = hash_params.get("studies", "")
+                    result["theme"] = hash_params.get("theme")
+                    result["timezone"] = hash_params.get("timezone")
+                    result["style"] = hash_params.get("style")
+                except Exception as e:
+                    result["hash_parse_error"] = str(e)
+        except Exception as e:
+            result["parse_error"] = str(e)
         return result
 
     # ------------------------------------------------------------------
-    # 💾 استخراج Storage
+    # 📡 رهگیری WebSocket
     # ------------------------------------------------------------------
-    async def _extract_storage(self, context: BrowserContext, page: Page) -> None:
-        """استخراج Cookies و Storage"""
-        print(c("  💾 استخراج Cookies و Storage...", Colors.CYAN))
+    async def _setup_websocket_capture(self, page: Page) -> None:
+        if not CAPTURE_WEBSOCKET:
+            return
 
-        try:
-            cookies = await context.cookies()
-            self.data["cookies"] = cookies
-        except Exception as e:
-            self.data["errors"].append({"type": "cookie_error", "message": str(e)})
+        def on_websocket(ws):
+            try:
+                log(f"🔌 WebSocket: {ws.url[:90]}", C.DIM, 2)
+                ws.on("framereceived", lambda p: asyncio.create_task(
+                    self._on_ws_message(ws.url, p, "received")
+                ))
+                ws.on("framesent", lambda p: asyncio.create_task(
+                    self._on_ws_message(ws.url, p, "sent")
+                ))
+            except Exception as e:
+                self._err("websocket_setup", e)
 
+        page.on("websocket", on_websocket)
+
+    async def _on_ws_message(self, ws_url: str, payload, direction: str) -> None:
         try:
-            local_storage = await page.evaluate("""
+            if len(self._ws_messages) >= MAX_WS_MESSAGES:
+                return
+
+            if isinstance(payload, bytes):
+                text = payload.decode("utf-8", errors="ignore")
+            else:
+                text = str(payload)
+
+            if len(text) > 100_000:
+                return
+
+            is_important = any(kw in text for kw in [
+                "timescale", "series", "du", "quote", "price",
+                "symbol", "resolution", "study", "create"
+            ])
+            if not is_important:
+                return
+
+            entry = {
+                "ws_url": ws_url[:150],
+                "direction": direction,
+                "size": len(text),
+                "preview": text[:2500],
+            }
+
+            try:
+                entry["parsed"] = json.loads(text)
+            except Exception:
+                pass
+
+            self._ws_messages.append(entry)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # 📡 رهگیری API
+    # ------------------------------------------------------------------
+    def _setup_api_capture(self, page: Page) -> None:
+        async def on_response(response: Response):
+            try:
+                if len(self._api_calls) >= MAX_API_CALLS:
+                    return
+
+                url = response.url
+                if not any(kw in url for kw in [
+                    "scanner", "quote", "history", "symbol_info",
+                    "pine-facade", "tvdatafeed", "indicators",
+                    "/api/", "chart"
+                ]):
+                    return
+
+                if response.status != 200:
+                    return
+
+                ct = response.headers.get("content-type", "")
+                if "json" not in ct and "text" not in ct:
+                    return
+
+                entry = {"url": url[:300], "status": response.status}
+
+                try:
+                    if "json" in ct:
+                        body = await response.json()
+                        body_str = json.dumps(body, default=str)
+                        if len(body_str) < 150_000:
+                            entry["body"] = body
+                        else:
+                            entry["body_preview"] = body_str[:30000]
+                except Exception:
+                    pass
+
+                self._api_calls.append(entry)
+            except Exception:
+                pass
+
+        page.on("response", lambda r: asyncio.create_task(on_response(r)))
+
+    # ------------------------------------------------------------------
+    # 🖼️ پیدا کردن iframe چارت
+    # ------------------------------------------------------------------
+    async def _find_all_iframes(self, page: Page) -> list[Frame]:
+        """پیدا کردن همه iframeهای مرتبط با TradingView"""
+        try:
+            await page.wait_for_selector("iframe", timeout=WAIT_MAX_IFRAME * 1000)
+        except Exception:
+            self._warn("iframe در زمان مقرر پیدا نشد")
+
+        await page.wait_for_timeout(3000)
+
+        frames = page.frames
+        tv_frames = []
+        other_frames = []
+
+        for frame in frames:
+            if frame == page.main_frame:
+                continue
+            url = frame.url
+            if not url.startswith("http"):
+                continue
+            if any(kw in url for kw in ["tradingview", "widgetembed", "s.tradingview.com"]):
+                tv_frames.append(frame)
+            else:
+                other_frames.append(frame)
+
+        return tv_frames + other_frames
+
+    # ------------------------------------------------------------------
+    # 🔍 استخراج از DOM داخل iframe
+    # ------------------------------------------------------------------
+    async def _extract_chart_basic(self, frame: Frame) -> dict[str, Any]:
+        try:
+            return await frame.evaluate("""
                 () => {
-                    const ls = {};
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        const value = localStorage.getItem(key);
-                        ls[key] = value ? value.substring(0, 2000) : value;
+                    const out = {
+                        url: window.location.href,
+                        title: document.title,
+                        ready: document.readyState,
+                        canvas_count: 0,
+                        widget_container: null,
+                        tv_globals: [],
+                        has_tv_widget: false,
+                        has_tradingview: false,
+                        chart_elements: [],
+                    };
+
+                    // canvasها
+                    const canvases = document.querySelectorAll('canvas');
+                    out.canvas_count = canvases.length;
+                    canvases.forEach((c, i) => {
+                        out.chart_elements.push({
+                            type: 'canvas',
+                            index: i,
+                            width: c.width,
+                            height: c.height,
+                            className: c.className,
+                            id: c.id,
+                        });
+                    });
+
+                    // آبجکت‌های سراسری
+                    try {
+                        out.tv_globals = Object.keys(window).filter(k =>
+                            /tv|trading|widget|chart|series|datafeed|pine/i.test(k)
+                        ).slice(0, 80);
+                    } catch (e) {}
+
+                    // بررسی وجود آبجکت‌ها
+                    try {
+                        if (typeof TradingView !== 'undefined') {
+                            out.has_tradingview = true;
+                            out.tradingview_keys = Object.keys(TradingView).slice(0, 30);
+                        }
+                    } catch (e) {}
+
+                    try {
+                        if (window.tvWidget && typeof window.tvWidget === 'object') {
+                            out.has_tv_widget = true;
+                        }
+                    } catch (e) {}
+
+                    // کانتینر widget
+                    const container = document.querySelector(
+                        '.tradingview-widget-container__widget, ' +
+                        '[class*="tradingview-widget"], ' +
+                        '[id*="tradingview"]'
+                    );
+                    if (container) {
+                        out.widget_container = {
+                            id: container.id,
+                            className: container.className,
+                        };
                     }
-                    return ls;
+
+                    return out;
                 }
             """)
-            self.data["local_storage"] = local_storage
+        except Exception as e:
+            self._err("extract_chart_basic", e)
+            return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # 🔎 پیدا کردن آبجکت widget
+    # ------------------------------------------------------------------
+    async def _find_widget_object(self, frame: Frame) -> dict[str, Any]:
+        """جستجوی گسترده برای پیدا کردن آبجکت widget"""
+        try:
+            return await frame.evaluate("""
+                () => {
+                    const out = {
+                        found: false,
+                        source: null,
+                        has_activeChart: false,
+                        methods: [],
+                    };
+
+                    const candidates = [
+                        { name: 'window.tvWidget', obj: window.tvWidget },
+                        { name: 'window.widget', obj: window.widget },
+                        { name: 'window.chartWidget', obj: window.chartWidget },
+                        { name: 'window._tvWidget', obj: window._tvWidget },
+                        { name: 'window.TradingView.widget', obj: window.TradingView && window.TradingView.widget },
+                    ];
+
+                    // جستجوی گسترده در window
+                    try {
+                        for (const key of Object.keys(window)) {
+                            try {
+                                const obj = window[key];
+                                if (obj && typeof obj === 'object' &&
+                                    typeof obj.activeChart === 'function') {
+                                    candidates.push({ name: 'window.' + key, obj });
+                                }
+                            } catch (e) {}
+                        }
+                    } catch (e) {}
+
+                    for (const cand of candidates) {
+                        if (cand.obj && typeof cand.obj === 'object') {
+                            if (typeof cand.obj.activeChart === 'function') {
+                                out.found = true;
+                                out.source = cand.name;
+                                out.has_activeChart = true;
+
+                                // لیست متدها
+                                for (const k in cand.obj) {
+                                    try {
+                                        if (typeof cand.obj[k] === 'function') {
+                                            out.methods.push(k);
+                                        }
+                                    } catch (e) {}
+                                }
+                                return out;
+                            }
+                        }
+                    }
+
+                    return out;
+                }
+            """)
+        except Exception as e:
+            self._err("find_widget_object", e)
+            return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # 📊 استخراج داده‌ها از widget API
+    # ------------------------------------------------------------------
+    async def _extract_widget_data(self, frame: Frame) -> dict[str, Any]:
+        try:
+            return await frame.evaluate(f"""
+                () => {{
+                    const out = {{
+                        widget_found: false,
+                        chart_found: false,
+                        symbol: null,
+                        symbol_info: null,
+                        resolution: null,
+                        chart_type: null,
+                        visible_range: null,
+                        series_meta: null,
+                        series_data: null,
+                        studies: [],
+                        study_values: {{}},
+                        drawings: [],
+                        available_chart_methods: [],
+                    }};
+
+                    // پیدا کردن widget
+                    let widget = null;
+                    const candidates = [
+                        window.tvWidget, window.widget, window.chartWidget,
+                        window._tvWidget,
+                        window.TradingView && window.TradingView.widget
+                    ];
+
+                    for (const c of candidates) {{
+                        if (c && typeof c === 'object' &&
+                            typeof c.activeChart === 'function') {{
+                            widget = c;
+                            break;
+                        }}
+                    }}
+
+                    // جستجوی گسترده
+                    if (!widget) {{
+                        for (const key of Object.keys(window)) {{
+                            try {{
+                                const obj = window[key];
+                                if (obj && typeof obj === 'object' &&
+                                    typeof obj.activeChart === 'function') {{
+                                    widget = obj;
+                                    break;
+                                }}
+                            }} catch (e) {{}}
+                        }}
+                    }}
+
+                    if (!widget) {{
+                        out.error = 'widget not found';
+                        return out;
+                    }}
+                    out.widget_found = true;
+
+                    // گرفتن chart
+                    let chart;
+                    try {{
+                        chart = widget.activeChart();
+                    }} catch (e) {{
+                        out.chart_error = String(e);
+                        return out;
+                    }}
+
+                    if (!chart) {{
+                        out.error = 'activeChart returned null';
+                        return out;
+                    }}
+                    out.chart_found = true;
+
+                    // متدهای chart
+                    try {{
+                        for (const k in chart) {{
+                            try {{
+                                if (typeof chart[k] === 'function') {{
+                                    out.available_chart_methods.push(k);
+                                }}
+                            }} catch (e) {{}}
+                        }}
+                    }} catch (e) {{}}
+
+                    // نماد
+                    try {{ out.symbol = chart.symbol(); }} catch (e) {{}}
+                    try {{ out.symbol_info = chart.symbolExt(); }} catch (e) {{}}
+                    try {{ out.resolution = chart.resolution(); }} catch (e) {{}}
+                    try {{ out.chart_type = chart.chartType(); }} catch (e) {{}}
+                    try {{ out.visible_range = chart.getVisibleRange(); }} catch (e) {{}}
+
+                    // سری اصلی - کندل‌ها
+                    try {{
+                        const series = chart.getSeries ? chart.getSeries() : null;
+                        if (series) {{
+                            try {{
+                                out.series_meta = series.meta ? series.meta() : null;
+                            }} catch (e) {{}}
+
+                            try {{
+                                const data = series.data ? series.data() : null;
+                                if (data && Array.isArray(data)) {{
+                                    const max = {MAX_CANDLES};
+                                    const limited = data.slice(-max);
+                                    out.series_data = {{
+                                        total: data.length,
+                                        returned: limited.length,
+                                        bars: limited.map(bar => ({{
+                                            time: bar.time,
+                                            open: bar.open,
+                                            high: bar.high,
+                                            low: bar.low,
+                                            close: bar.close,
+                                            volume: bar.volume,
+                                        }}))
+                                    }};
+                                }}
+                            }} catch (e) {{
+                                out.series_data_error = String(e);
+                            }}
+                        }}
+                    }} catch (e) {{
+                        out.series_error = String(e);
+                    }}
+
+                    // اندیکاتورها (studies)
+                    try {{
+                        if (typeof chart.getAllStudies === 'function') {{
+                            const studies = chart.getAllStudies();
+                            out.studies = studies;
+                            for (const st of studies) {{
+                                try {{
+                                    const s = chart.getStudyById(st.id);
+                                    if (!s) continue;
+
+                                    const sd = {{
+                                        id: st.id,
+                                        name: st.name,
+                                        title: st.title,
+                                    }};
+
+                                    try {{ sd.values = s.getValues(); }} catch (e) {{}}
+                                    try {{ sd.inputs = s.getInputs(); }} catch (e) {{}}
+                                    try {{ sd.outputs = s.getOutputs(); }} catch (e) {{}}
+                                    try {{
+                                        const srs = s.getSeries ? s.getSeries() : [];
+                                        sd.series_count = srs.length;
+                                    }} catch (e) {{}}
+
+                                    out.study_values[st.name] = sd;
+                                }} catch (e) {{
+                                    out.study_values[st.name] = {{ error: String(e) }};
+                                }}
+                            }}
+                        }}
+                    }} catch (e) {{
+                        out.studies_error = String(e);
+                    }}
+
+                    // ترسیمات
+                    try {{
+                        if (typeof chart.getAllShapes === 'function') {{
+                            const shapes = chart.getAllShapes();
+                            out.drawings = shapes.map(s => ({{
+                                id: s.id,
+                                name: s.name,
+                                points: s.points,
+                                properties: s.properties,
+                            }}));
+                        }}
+                    }} catch (e) {{
+                        out.drawings_error = String(e);
+                    }}
+
+                    return out;
+                }}
+            """)
+        except Exception as e:
+            self._err("extract_widget_data", e)
+            return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # 🎨 بررسی امکان ترسیم
+    # ------------------------------------------------------------------
+    async def _check_drawing_api(self, frame: Frame) -> dict[str, Any]:
+        try:
+            return await frame.evaluate("""
+                () => {
+                    const out = {
+                        can_create_shape: false,
+                        can_create_multipoint: false,
+                        can_create_execution: false,
+                        available_methods: [],
+                        last_price: null,
+                    };
+
+                    let widget = null;
+                    const candidates = [
+                        window.tvWidget, window.widget, window.chartWidget,
+                        window._tvWidget,
+                    ];
+                    for (const c of candidates) {
+                        if (c && typeof c === 'object' &&
+                            typeof c.activeChart === 'function') {
+                            widget = c;
+                            break;
+                        }
+                    }
+                    if (!widget) {
+                        for (const key of Object.keys(window)) {
+                            try {
+                                const obj = window[key];
+                                if (obj && typeof obj === 'object' &&
+                                    typeof obj.activeChart === 'function') {
+                                    widget = obj;
+                                    break;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    if (!widget) return out;
+
+                    const chart = widget.activeChart();
+                    if (!chart) return out;
+
+                    if (typeof chart.createShape === 'function')
+                        out.can_create_shape = true;
+                    if (typeof chart.createMultipointShape === 'function')
+                        out.can_create_multipoint = true;
+                    if (typeof chart.createExecutionShape === 'function')
+                        out.can_create_execution = true;
+
+                    // گرفتن آخرین قیمت
+                    try {
+                        const series = chart.getSeries();
+                        if (series) {
+                            const data = series.data();
+                            if (data && data.length > 0) {
+                                out.last_price = data[data.length - 1].close;
+                            }
+                        }
+                    } catch (e) {}
+
+                    return out;
+                }
+            """)
+        except Exception as e:
+            self._err("check_drawing_api", e)
+            return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # 🖼️ اطلاعات canvasها
+    # ------------------------------------------------------------------
+    async def _extract_canvas_info(self, frame: Frame) -> list[dict]:
+        try:
+            return await frame.evaluate("""
+                () => {
+                    const out = [];
+                    document.querySelectorAll('canvas').forEach((c, i) => {
+                        out.push({
+                            index: i,
+                            id: c.id,
+                            className: c.className,
+                            width: c.width,
+                            height: c.height,
+                            clientWidth: c.clientWidth,
+                            clientHeight: c.clientHeight,
+                            offsetX: c.offsetLeft,
+                            offsetY: c.offsetTop,
+                            visible: c.offsetParent !== null,
+                            parentClass: c.parentElement ? c.parentElement.className : null,
+                        });
+                    });
+                    return out;
+                }
+            """)
+        except Exception as e:
+            self._err("extract_canvas_info", e)
+            return []
+
+    # ------------------------------------------------------------------
+    # 💾 استخراج Storage از صفحه اصلی
+    # ------------------------------------------------------------------
+    async def _extract_storage(self, page: Page) -> None:
+        try:
+            local = await page.evaluate("""
+                () => {
+                    const out = {};
+                    try {
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const k = localStorage.key(i);
+                            out[k] = localStorage.getItem(k);
+                        }
+                    } catch (e) {}
+                    return out;
+                }
+            """)
+            self.data["storage"]["local"] = local
         except Exception:
             pass
 
         try:
-            session_storage = await page.evaluate("""
+            session = await page.evaluate("""
                 () => {
-                    const ss = {};
-                    for (let i = 0; i < sessionStorage.length; i++) {
-                        const key = sessionStorage.key(i);
-                        const value = sessionStorage.getItem(key);
-                        ss[key] = value ? value.substring(0, 2000) : value;
-                    }
-                    return ss;
+                    const out = {};
+                    try {
+                        for (let i = 0; i < sessionStorage.length; i++) {
+                            const k = sessionStorage.key(i);
+                            out[k] = sessionStorage.getItem(k);
+                        }
+                    } catch (e) {}
+                    return out;
                 }
             """)
-            self.data["session_storage"] = session_storage
+            self.data["storage"]["session"] = session
         except Exception:
             pass
 
     # ------------------------------------------------------------------
-    # 📸 گرفتن اسکرین‌شات
+    # 📸 اسکرین‌شات
     # ------------------------------------------------------------------
-    async def _take_screenshot(self, page: Page) -> None:
-        """ذخیره اسکرین‌شات کامل صفحه"""
-        print(c("  📸 گرفتن اسکرین‌شات...", Colors.CYAN))
+    async def _screenshot(self, frame: Frame) -> Optional[str]:
         try:
-            path = os.path.join(self.output_dir, f"screenshot_{self.timestamp}.png")
-            await page.screenshot(path=path, full_page=True)
-            self.data["meta"]["screenshot"] = path
-            print(c(f"  ✅ اسکرین‌شات ذخیره شد: {path}", Colors.GREEN))
+            el = await frame.query_selector("body")
+            if not el:
+                return None
+            path = os.path.join(self.output_dir, f"chart_{self.ts}.png")
+            await el.screenshot(path=path)
+            log(f"✅ اسکرین‌شات: {path}", C.GREEN, 2)
+            return path
         except Exception as e:
-            self.data["errors"].append({"type": "screenshot_error", "message": str(e)})
+            self._err("screenshot", e)
+            return None
 
     # ------------------------------------------------------------------
-    # 💾 ذخیره در فایل
+    # 💾 ذخیره فایل‌ها
     # ------------------------------------------------------------------
     def _save_files(self) -> None:
-        """ذخیره همه داده‌ها در فایل‌های خروجی"""
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # --- JSON اصلی ---
-        json_path = os.path.join(self.output_dir, f"data_{self.timestamp}.json")
+        # JSON اصلی
+        json_path = os.path.join(self.output_dir, f"chart_data_{self.ts}.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2, default=str)
-        print(c(f"  ✅ JSON اصلی ذخیره شد: {json_path}", Colors.GREEN))
+        log(f"✅ JSON اصلی:   {json_path}", C.GREEN, 2)
 
-        # --- HTML خام ---
-        html_path = os.path.join(self.output_dir, f"page_{self.timestamp}.html")
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(self.data.get("raw_html", ""))
-        print(c(f"  ✅ HTML ذخیره شد: {html_path}", Colors.GREEN))
+        # کندل‌ها
+        if self.data["candles"]:
+            p = os.path.join(self.output_dir, f"candles_{self.ts}.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(self.data["candles"], f, ensure_ascii=False, indent=2)
+            log(f"✅ کندل‌ها:      {p}", C.GREEN, 2)
 
-        # --- خلاصه متنی ---
-        summary_path = os.path.join(self.output_dir, f"summary_{self.timestamp}.txt")
-        with open(summary_path, "w", encoding="utf-8") as f:
+        # WebSocket
+        if self._ws_messages:
+            p = os.path.join(self.output_dir, f"websocket_{self.ts}.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(self._ws_messages, f, ensure_ascii=False, indent=2)
+            log(f"✅ WebSocket:    {p}", C.GREEN, 2)
+
+        # API calls
+        if self._api_calls:
+            p = os.path.join(self.output_dir, f"api_calls_{self.ts}.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(self._api_calls, f, ensure_ascii=False, indent=2, default=str)
+            log(f"✅ API calls:    {p}", C.GREEN, 2)
+
+        # خلاصه
+        self._save_summary()
+
+    def _save_summary(self) -> None:
+        p = os.path.join(self.output_dir, f"summary_{self.ts}.txt")
+        cd = self.data.get("chart_data", {})
+        ifr = self.data.get("iframe_info", {})
+
+        with open(p, "w", encoding="utf-8") as f:
             f.write("=" * 70 + "\n")
-            f.write("📊 TradingView Extraction Summary\n")
+            f.write("📊 TradingView Chart Reader v3.1 - Summary\n")
             f.write("=" * 70 + "\n\n")
-            f.write(f"URL: {self.data['meta']['url']}\n")
-            f.write(f"Timestamp: {self.data['meta']['timestamp_utc']}\n\n")
 
-            f.write(f"عنوان صفحه: {self.data['dom_elements'].get('title', 'N/A')}\n\n")
+            f.write(f"Source URL:    {self.url}\n")
+            f.write(f"Timestamp:     {self.data['meta']['timestamp_utc']}\n\n")
 
-            f.write(f"تعداد پاسخ‌های شبکه: {len(self.data['network_responses'])}\n")
-            f.write(f"تعداد لینک‌ها: {len(self.data['dom_elements'].get('links', []))}\n")
-            f.write(f"تعداد تصاویر: {len(self.data['dom_elements'].get('images', []))}\n")
-            f.write(f"تعداد دکمه‌ها: {len(self.data['dom_elements'].get('buttons', []))}\n")
-            f.write(f"تعداد inputها: {len(self.data['dom_elements'].get('inputs', []))}\n")
-            f.write(f"تعداد اسکریپت‌های خارجی: {len(self.data['dom_elements'].get('external_scripts', []))}\n")
-            f.write(f"تعداد استایل‌شیت‌ها: {len(self.data['dom_elements'].get('stylesheets', []))}\n")
-            f.write(f"تعداد canvasها: {len(self.data['dom_elements'].get('canvases', []))}\n")
-            f.write(f"تعداد Cookies: {len(self.data['cookies'])}\n")
-            f.write(f"تعداد خطاها: {len(self.data['errors'])}\n\n")
+            f.write("─" * 70 + "\n[IFRAME INFO]\n" + "─" * 70 + "\n")
+            f.write(f"Symbol:        {ifr.get('symbol', 'N/A')}\n")
+            f.write(f"Interval:      {ifr.get('interval', 'N/A')}\n")
+            f.write(f"Studies:       {ifr.get('studies_raw', 'N/A')}\n")
+            f.write(f"Theme:         {ifr.get('theme', 'N/A')}\n")
+            f.write(f"Timezone:      {ifr.get('timezone', 'N/A')}\n\n")
 
-            f.write("-" * 70 + "\n")
-            f.write("📈 داده‌های چارت TradingView:\n")
-            f.write("-" * 70 + "\n")
-            tv_data = self.data["dom_elements"].get("tv_data", {})
-            for key, value in tv_data.items():
-                f.write(f"\n[{key}]:\n")
-                f.write(json.dumps(value, ensure_ascii=False, indent=2, default=str)[:3000] + "\n")
+            f.write("─" * 70 + "\n[CHART DATA]\n" + "─" * 70 + "\n")
+            f.write(f"Widget found:  {cd.get('widget_found', False)}\n")
+            f.write(f"Chart found:   {cd.get('chart_found', False)}\n")
+            f.write(f"Symbol:        {cd.get('symbol', 'N/A')}\n")
+            f.write(f"Resolution:    {cd.get('resolution', 'N/A')}\n")
+            f.write(f"Chart type:    {cd.get('chart_type', 'N/A')}\n")
+            f.write(f"Studies:       {len(cd.get('studies', []))}\n")
+            f.write(f"Drawings:      {len(cd.get('drawings', []))}\n")
 
-        print(c(f"  ✅ خلاصه متنی ذخیره شد: {summary_path}", Colors.GREEN))
+            if cd.get("series_data"):
+                f.write(f"Candles total: {cd['series_data'].get('total', 0)}\n")
+                f.write(f"Candles saved: {cd['series_data'].get('returned', 0)}\n")
+
+            f.write("\n" + "─" * 70 + "\n[DRAWING API]\n" + "─" * 70 + "\n")
+            dt = self.data.get("draw_test", {})
+            f.write(f"createShape():           {dt.get('can_create_shape', False)}\n")
+            f.write(f"createMultipointShape(): {dt.get('can_create_multipoint', False)}\n")
+            f.write(f"createExecutionShape():  {dt.get('can_create_execution', False)}\n")
+            f.write(f"Last price:              {dt.get('last_price', 'N/A')}\n")
+
+            f.write("\n" + "─" * 70 + "\n[STATISTICS]\n" + "─" * 70 + "\n")
+            f.write(f"WebSocket messages:  {len(self._ws_messages)}\n")
+            f.write(f"API calls:           {len(self._api_calls)}\n")
+            f.write(f"Candles:             {len(self.data.get('candles', []))}\n")
+            f.write(f"Warnings:            {len(self.data.get('warnings', []))}\n")
+            f.write(f"Errors:              {len(self.data.get('errors', []))}\n")
+
+            if self.data.get("errors"):
+                f.write("\n" + "─" * 70 + "\n[ERRORS]\n" + "─" * 70 + "\n")
+                for e in self.data["errors"][:20]:
+                    f.write(f"  - [{e.get('stage')}] {e.get('error')}\n")
+
+            if self.data.get("warnings"):
+                f.write("\n" + "─" * 70 + "\n[WARNINGS]\n" + "─" * 70 + "\n")
+                for w in self.data["warnings"][:20]:
+                    f.write(f"  - {w}\n")
+
+        log(f"✅ خلاصه:       {p}", C.GREEN, 2)
 
     # ------------------------------------------------------------------
     # 🚀 اجرای اصلی
     # ------------------------------------------------------------------
-    async def run(self) -> None:
+    async def run(self) -> dict[str, Any]:
         banner()
 
-        print(c(f"🎯 آدرس هدف: {self.url}", Colors.YELLOW))
-        print(c(f"📁 پوشه خروجی: {self.output_dir}", Colors.YELLOW))
-        print(c(f"⏱️  مدت انتظار: {CHART_LOAD_WAIT} ثانیه", Colors.YELLOW))
-        print(c(f"🖥️  حالت مخفی: {HEADLESS}", Colors.YELLOW))
-        print()
+        log(f"🎯 URL هدف:      {self.url}", C.YELLOW)
+        log(f"📁 پوشه خروجی:  {self.output_dir}", C.YELLOW)
+        log(f"⏱️  زمان انتظار:  {WAIT_AFTER_LOAD}s + {WAIT_IFRAME_LOAD}s", C.YELLOW)
+        log(f"🖥️  حالت:        {'مخفی' if HEADLESS else 'نمایشی'}", C.YELLOW)
 
         os.makedirs(self.output_dir, exist_ok=True)
 
         async with async_playwright() as p:
-            print(c("🚀 راه‌اندازی مرورگر Chromium...", Colors.CYAN))
+            section("راه‌اندازی مرورگر")
 
             browser = await p.chromium.launch(
                 headless=HEADLESS,
@@ -478,201 +889,302 @@ class TradingViewExtractor:
                     "--disable-blink-features=AutomationControlled",
                     "--disable-web-security",
                     "--disable-features=IsolateOrigins,site-per-process",
-                    "--disable-accelerated-2d-canvas",
-                    "--disable-background-timer-throttling",
+                    "--mute-audio",
                 ],
             )
 
             context = await browser.new_context(
-                user_agent=USER_AGENT,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
                 viewport={"width": 1920, "height": 1080},
-                locale=LOCALE,
-                timezone_id="UTC",
+                locale="en-US",
+                timezone_id="Asia/Tehran",
                 ignore_https_errors=True,
             )
 
-            # پاک‌سازی ردپای خودکارسازی
             await context.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
                 window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {} };
             """)
 
             page = await context.new_page()
 
-            # --- اتصال event handlerها ---
-            page.on("response", lambda r: asyncio.create_task(self._on_response(r)))
-            page.on("console", self._on_console)
-            page.on("pageerror", self._on_page_error)
+            # نصب رهگیرها
+            try:
+                await self._setup_websocket_capture(page)
+            except Exception as e:
+                self._err("setup_ws", e)
+
+            try:
+                self._setup_api_capture(page)
+            except Exception as e:
+                self._err("setup_api", e)
 
             # --- باز کردن صفحه ---
-            print(c(f"📡 در حال باز کردن صفحه...", Colors.CYAN))
+            section("باز کردن صفحه اصلی")
             try:
-                await page.goto(self.url, wait_until="domcontentloaded", timeout=90000)
-                print(c("  ✅ صفحه باز شد", Colors.GREEN))
+                resp = await page.goto(self.url, wait_until="domcontentloaded", timeout=90000)
+                log(f"✅ پاسخ: {resp.status if resp else 'N/A'}", C.GREEN, 2)
             except Exception as e:
-                print(c(f"  ⚠️  هشدار: {e}", Colors.YELLOW))
+                log(f"⚠️  {e}", C.YELLOW, 2)
+                self._err("goto", e)
+
+            log(f"⏳ انتظار {WAIT_AFTER_LOAD}s برای بارگذاری اولیه...", C.CYAN, 2)
+            await page.wait_for_timeout(WAIT_AFTER_LOAD * 1000)
+
+            # --- پیدا کردن iframe ---
+            section("جستجوی iframe چارت")
+            frames = await self._find_all_iframes(page)
+
+            if not frames:
+                log("❌ هیچ iframe‌ای پیدا نشد!", C.RED, 2)
+                self._err("find_iframe", "no iframe found")
+                await browser.close()
+                return self.data
+
+            log(f"✅ {len(frames)} iframe پیدا شد", C.GREEN, 2)
+            for i, fr in enumerate(frames):
+                log(f"   [{i}] {fr.url[:100]}", C.DIM, 2)
+
+            # انتخاب اولین iframe TradingView
+            chart_frame = frames[0]
+            for fr in frames:
+                if "tradingview" in fr.url.lower():
+                    chart_frame = fr
+                    break
+
+            log(f"🎯 iframe انتخابی: {chart_frame.url[:100]}", C.CYAN, 2)
+
+            # --- پارس اطلاعات iframe ---
+            iframe_info = self._parse_iframe_url(chart_frame.url)
+            self.data["iframe_info"] = iframe_info
+            self.data["widget_config"] = iframe_info.get("hash_params", {})
+
+            if iframe_info.get("symbol"):
+                log(f"   نماد:      {iframe_info['symbol']}", C.WHITE, 2)
+            if iframe_info.get("interval"):
+                log(f"   تایم‌فریم: {iframe_info['interval']}", C.WHITE, 2)
+            if iframe_info.get("studies_raw"):
+                log(f"   اندیکاتورها: {iframe_info['studies_raw'][:80]}...", C.WHITE, 2)
 
             # --- انتظار برای بارگذاری چارت ---
-            print(c(f"⏳ انتظار {CHART_LOAD_WAIT} ثانیه برای بارگذاری کامل چارت...", Colors.CYAN))
-            await page.wait_for_timeout(CHART_LOAD_WAIT * 1000)
+            log(f"⏳ انتظار {WAIT_IFRAME_LOAD}s برای بارگذاری چارت داخل iframe...", C.CYAN, 2)
+            await page.wait_for_timeout(WAIT_IFRAME_LOAD * 1000)
 
-            # --- تلاش برای پیدا کردن canvas چارت ---
-            print(c("🔎 بررسی وجود چارت...", Colors.CYAN))
+            # --- استخراج داده‌های پایه ---
+            section("استخراج داده‌های چارت")
+
             try:
-                has_canvas = await page.evaluate(
-                    "() => document.querySelectorAll('canvas').length > 0"
-                )
-                if has_canvas:
-                    canvas_count = await page.evaluate(
-                        "() => document.querySelectorAll('canvas').length"
-                    )
-                    print(c(f"  ✅ {canvas_count} canvas پیدا شد (چارت در حال رندر است)", Colors.GREEN))
-                else:
-                    print(c("  ⚠️  canvas پیدا نشد، احتمالاً چارت هنوز بارگذاری نشده", Colors.YELLOW))
-            except Exception:
-                pass
-
-            # --- استخراج DOM ---
-            print()
-            print(c("📦 شروع استخراج داده‌ها...", Colors.BOLD + Colors.MAGENTA))
-            dom_data = await self._extract_dom(page)
-            self.data["dom_elements"] = dom_data
-
-            # --- ذخیره HTML خام ---
-            try:
-                self.data["raw_html"] = await page.content()
-                print(c(f"  ✅ HTML خام استخراج شد ({len(self.data['raw_html'])} کاراکتر)", Colors.GREEN))
+                basic = await self._extract_chart_basic(chart_frame)
+                self.data["chart_data"]["basic"] = basic
+                log(f"✅ اطلاعات پایه: {basic.get('canvas_count', 0)} canvas پیدا شد", C.GREEN, 2)
+                if basic.get("has_tv_widget"):
+                    log("✅ window.tvWidget موجود است", C.GREEN, 2)
+                if basic.get("has_tradingview"):
+                    log("✅ window.TradingView موجود است", C.GREEN, 2)
             except Exception as e:
-                self.data["errors"].append({"type": "html_error", "message": str(e)})
+                log(f"⚠️  {e}", C.YELLOW, 2)
+
+            # --- پیدا کردن widget ---
+            try:
+                widget_info = await self._find_widget_object(chart_frame)
+                self.data["chart_data"]["widget_object"] = widget_info
+                if widget_info.get("found"):
+                    log(f"✅ آبجکت widget پیدا شد از: {widget_info.get('source')}", C.GREEN, 2)
+                else:
+                    log("⚠️  آبجکت widget پیدا نشد", C.YELLOW, 2)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YELLOW, 2)
+
+            # --- استخراج از widget API ---
+            try:
+                widget_data = await self._extract_widget_data(chart_frame)
+                self.data["chart_data"].update(widget_data)
+
+                if widget_data.get("chart_found"):
+                    log(f"✅ chart API در دسترس", C.GREEN, 2)
+                    log(f"   نماد:        {widget_data.get('symbol')}", C.WHITE, 2)
+                    log(f"   رزولوشن:     {widget_data.get('resolution')}", C.WHITE, 2)
+                    log(f"   نوع چارت:    {widget_data.get('chart_type')}", C.WHITE, 2)
+                    log(f"   اندیکاتورها: {len(widget_data.get('studies', []))}", C.WHITE, 2)
+                    log(f"   ترسیمات:     {len(widget_data.get('drawings', []))}", C.WHITE, 2)
+                    if widget_data.get("series_data"):
+                        sd = widget_data["series_data"]
+                        log(f"   کندل‌ها:      {sd.get('returned', 0)} از {sd.get('total', 0)}", C.WHITE, 2)
+                else:
+                    log(f"⚠️  chart API در دسترس نیست: {widget_data.get('error', 'unknown')}", C.YELLOW, 2)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YELLOW, 2)
+
+            # --- ذخیره کندل‌ها در فیلد جدا ---
+            sd = self.data.get("chart_data", {}).get("series_data")
+            if sd and sd.get("bars"):
+                self.data["candles"] = sd["bars"]
+
+            # --- بررسی API ترسیم ---
+            section("بررسی امکان ترسیم")
+            try:
+                draw_info = await self._check_drawing_api(chart_frame)
+                self.data["draw_test"] = draw_info
+
+                if draw_info.get("can_create_shape"):
+                    log("✅ createShape() در دسترس", C.GREEN, 2)
+                if draw_info.get("can_create_multipoint"):
+                    log("✅ createMultipointShape() در دسترس", C.GREEN, 2)
+                if draw_info.get("can_create_execution"):
+                    log("✅ createExecutionShape() در دسترس", C.GREEN, 2)
+                if draw_info.get("last_price"):
+                    log(f"💰 آخرین قیمت: {draw_info['last_price']}", C.WHITE, 2)
+
+                if not any([
+                    draw_info.get("can_create_shape"),
+                    draw_info.get("can_create_multipoint"),
+                    draw_info.get("can_create_execution"),
+                ]):
+                    log("⚠️  هیچ API ترسیمی در دسترس نیست", C.YELLOW, 2)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YELLOW, 2)
+
+            # --- اطلاعات canvasها ---
+            try:
+                canvas_info = await self._extract_canvas_info(chart_frame)
+                self.data["canvas_info"] = canvas_info
+                log(f"✅ {len(canvas_info)} canvas ذخیره شد", C.GREEN, 2)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YELLOW, 2)
 
             # --- Storage ---
-            await self._extract_storage(context, page)
+            try:
+                await self._extract_storage(page)
+                log(f"✅ Storage استخراج شد", C.GREEN, 2)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YELLOW, 2)
+
+            # --- WebSocket و API ---
+            self.data["websocket_messages"] = self._ws_messages
+            self.data["network_api_calls"] = self._api_calls
+            log(f"✅ {len(self._ws_messages)} پیام WebSocket", C.GREEN, 2)
+            log(f"✅ {len(self._api_calls)} درخواست API", C.GREEN, 2)
 
             # --- اسکرین‌شات ---
-            await self._take_screenshot(page)
+            try:
+                await self._screenshot(chart_frame)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YELLOW, 2)
 
             # --- ذخیره فایل‌ها ---
-            print()
-            print(c("💾 ذخیره فایل‌های خروجی...", Colors.BOLD + Colors.MAGENTA))
-            self._save_files()
+            section("ذخیره فایل‌های خروجی")
+            try:
+                self._save_files()
+            except Exception as e:
+                log(f"❌ خطا در ذخیره: {e}", C.RED, 2)
+                self._err("save_files", e)
 
-            # --- بستن مرورگر ---
             await browser.close()
 
-            # --- نمایش خلاصه نهایی ---
-            print()
-            print(c("╔" + "═" * 68 + "╗", Colors.GREEN))
-            print(c("║" + " " * 22 + "✅  استخراج با موفقیت انجام شد" + " " * 22 + "║", Colors.GREEN + Colors.BOLD))
-            print(c("╚" + "═" * 68 + "╝", Colors.GREEN))
-            print()
-            print(c(f"📁 پوشه خروجی: {os.path.abspath(self.output_dir)}", Colors.CYAN))
-            print(c(f"📄 فایل‌های ذخیره‌شده:", Colors.CYAN))
-            print(c(f"   • JSON اصلی (تمام داده‌ها)", Colors.WHITE))
-            print(c(f"   • HTML خام صفحه", Colors.WHITE))
-            print(c(f"   • خلاصه متنی", Colors.WHITE))
-            print(c(f"   • اسکرین‌شات PNG", Colors.WHITE))
-            print()
+        self._print_summary()
+        return self.data
 
-    # ------------------------------------------------------------------
-    # 📊 نمایش آمار
-    # ------------------------------------------------------------------
-    def print_stats(self) -> None:
-        """نمایش آمار نهایی"""
-        d = self.data
-        print(c("─" * 70, Colors.DIM))
-        print(c("📊 آمار استخراج:", Colors.BOLD))
-        print(c(f"  • پاسخ‌های شبکه:      {len(d['network_responses'])}", Colors.WHITE))
-        print(c(f"  • لینک‌ها:              {len(d['dom_elements'].get('links', []))}", Colors.WHITE))
-        print(c(f"  • تصاویر:              {len(d['dom_elements'].get('images', []))}", Colors.WHITE))
-        print(c(f"  • دکمه‌ها:              {len(d['dom_elements'].get('buttons', []))}", Colors.WHITE))
-        print(c(f"  • inputها:             {len(d['dom_elements'].get('inputs', []))}", Colors.WHITE))
-        print(c(f"  • اسکریپت‌های خارجی:  {len(d['dom_elements'].get('external_scripts', []))}", Colors.WHITE))
-        print(c(f"  • canvasها:            {len(d['dom_elements'].get('canvases', []))}", Colors.WHITE))
-        print(c(f"  • Cookies:             {len(d['cookies'])}", Colors.WHITE))
-        print(c(f"  • خطاها:               {len(d['errors'])}", Colors.WHITE))
-        print(c("─" * 70, Colors.DIM))
+    def _print_summary(self) -> None:
+        cd = self.data.get("chart_data", {})
+        ifr = self.data.get("iframe_info", {})
+        dt = self.data.get("draw_test", {})
 
+        print()
+        print(f"{C.GREEN}╔{'═' * 68}╗{C.RESET}")
+        print(f"{C.GREEN}║{C.BOLD}{C.WHITE}              ✅  استخراج با موفقیت انجام شد              {C.RESET}{C.GREEN}║{C.RESET}")
+        print(f"{C.GREEN}╚{'═' * 68}╝{C.RESET}")
+        print()
 
-# ======================================================================
-# 🎯 تعامل با کاربر (Interactive Mode)
-# ======================================================================
+        log(f"📌 نماد:            {cd.get('symbol', ifr.get('symbol', 'N/A'))}", C.WHITE)
+        log(f"⏱️  تایم‌فریم:      {cd.get('resolution', ifr.get('interval', 'N/A'))}", C.WHITE)
+        log(f"📊 تعداد کندل:      {len(self.data.get('candles', []))}", C.WHITE)
+        log(f"📉 اندیکاتورها:     {len(cd.get('studies', []))}", C.WHITE)
+        log(f"✏️  ترسیمات موجود:  {len(cd.get('drawings', []))}", C.WHITE)
+        log(f"🖼️  canvasها:      {len(self.data.get('canvas_info', []))}", C.WHITE)
+        log(f"🔌 پیام‌های WS:     {len(self.data.get('websocket_messages', []))}", C.WHITE)
+        log(f"🌐 API calls:       {len(self.data.get('network_api_calls', []))}", C.WHITE)
+        log(f"⚠️  هشدارها:        {len(self.data.get('warnings', []))}", C.WHITE)
+        log(f"❌ خطاها:           {len(self.data.get('errors', []))}", C.WHITE)
+        print()
 
-async def interactive_mode() -> None:
-    """حالت تعاملی: از کاربر اطلاعات می‌گیرد"""
-    banner()
+        # توانایی‌ها
+        log("─" * 68, C.DIM)
+        log("🎯 توانایی‌های در دسترس:", C.BOLD + C.CYAN)
+        log(f"   Widget API:      {'✅' if cd.get('widget_found') else '❌'}", C.WHITE)
+        log(f"   Chart API:       {'✅' if cd.get('chart_found') else '❌'}", C.WHITE)
+        log(f"   createShape:     {'✅' if dt.get('can_create_shape') else '❌'}", C.WHITE)
+        log(f"   Multipoint:      {'✅' if dt.get('can_create_multipoint') else '❌'}", C.WHITE)
+        log(f"   Execution:       {'✅' if dt.get('can_create_execution') else '❌'}", C.WHITE)
+        log("─" * 68, C.DIM)
 
-    print(c("📝 وارد کردن تنظیمات (برای مقادیر پیش‌فرض Enter بزنید):\n", Colors.BOLD))
+        if cd.get("chart_found"):
+            log("✨ API داخلی TradingView آماده اعمال ترسیمات!", C.GREEN + C.BOLD)
+        elif cd.get("widget_found"):
+            log("⚠️  Widget هست ولی Chart API در دسترس نیست", C.YELLOW)
+        else:
+            log("⚠️  API داخلی در دسترس نیست - از داده‌های WebSocket استفاده کنید", C.YELLOW)
 
-    # --- آدرس سایت ---
-    print(c(f"🔗 آدرس پیش‌فرض: {TARGET_URL}", Colors.YELLOW))
-    url_input = input(c("   آدرس جدید (Enter = پیش‌فرض): ", Colors.CYAN)).strip()
-    url = url_input if url_input else TARGET_URL
-    if not url.startswith("http"):
-        url = "https://" + url
-
-    # --- مدت انتظار ---
-    print(c(f"\n⏱️  مدت انتظار پیش‌فرض: {CHART_LOAD_WAIT} ثانیه", Colors.YELLOW))
-    wait_input = input(c("   مدت انتظار جدید (Enter = پیش‌فرض): ", Colors.CYAN)).strip()
-    try:
-        wait_time = int(wait_input) if wait_input else CHART_LOAD_WAIT
-    except ValueError:
-        wait_time = CHART_LOAD_WAIT
-
-    # --- حالت مرورگر ---
-    print(c(f"\n🖥️  حالت پیش‌فرض: {'مخفی (Headless)' if HEADLESS else 'نمایشی (Headed)'}", Colors.YELLOW))
-    print(c("   1 = مخفی", Colors.DIM))
-    print(c("   2 = نمایشی", Colors.DIM))
-    mode_input = input(c("   انتخاب (Enter = پیش‌فرض): ", Colors.CYAN)).strip()
-    if mode_input == "1":
-        headless = True
-    elif mode_input == "2":
-        headless = False
-    else:
-        headless = HEADLESS
-
-    # --- تأیید ---
-    print()
-    print(c("─" * 70, Colors.DIM))
-    print(c("📋 تنظیمات نهایی:", Colors.BOLD))
-    print(c(f"   🔗 URL:        {url}", Colors.WHITE))
-    print(c(f"   ⏱️  انتظار:    {wait_time} ثانیه", Colors.WHITE))
-    print(c(f"   🖥️  حالت:      {'مخفی' if headless else 'نمایشی'}", Colors.WHITE))
-    print(c("─" * 70, Colors.DIM))
-    print()
-
-    confirm = input(c("ادامه؟ (Y/n): ", Colors.CYAN)).strip().lower()
-    if confirm and confirm not in ("y", "yes", "بله", "ب"):
-        print(c("❌ لغو شد.", Colors.RED))
-        return
-
-    print()
-    extractor = TradingViewExtractor(url=url, output_dir=OUTPUT_DIR)
-    # override settings
-    globals()["HEADLESS"] = headless
-    globals()["CHART_LOAD_WAIT"] = wait_time
-
-    await extractor.run()
-    extractor.print_stats()
+        print()
+        log(f"📁 پوشه خروجی: {os.path.abspath(self.output_dir)}", C.CYAN)
+        print()
 
 
 # ======================================================================
 # 🏁 ورودی برنامه
 # ======================================================================
 
-def main() -> None:
-    """نقطه ورود برنامه"""
+async def interactive():
+    banner()
 
-    # اجرا در حالت تعاملی
+    log("📝 وارد کردن تنظیمات (Enter = پیش‌فرض):\n", C.BOLD)
+
+    log(f"🔗 URL پیش‌فرض: {TARGET_URL}", C.YELLOW)
+    url_input = input(f"{C.CYAN}   URL جدید: {C.RESET}").strip()
+    url = url_input if url_input else TARGET_URL
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    log(f"\n🖥️  حالت پیش‌فرض: {'مخفی' if HEADLESS else 'نمایشی'}", C.YELLOW)
+    log("   1 = مخفی   2 = نمایشی", C.DIM)
+    mode = input(f"{C.CYAN}   انتخاب (Enter = پیش‌فرض): {C.RESET}").strip()
+    headless = HEADLESS if mode not in ("1", "2") else (mode == "1")
+
+    print()
+    log("─" * 60, C.DIM)
+    log(f"🔗 URL:    {url}", C.WHITE)
+    log(f"🖥️  حالت:  {'مخفی' if headless else 'نمایشی'}", C.WHITE)
+    log("─" * 60, C.DIM)
+    print()
+
+    confirm = input(f"{C.CYAN}ادامه؟ (Y/n): {C.RESET}").strip().lower()
+    if confirm and confirm not in ("y", "yes", "بله", "ب"):
+        log("❌ لغو شد.", C.RED)
+        return
+
+    globals()["HEADLESS"] = headless
+    reader = TradingViewChartReader(url=url, output_dir=OUTPUT_DIR)
+
     try:
-        asyncio.run(interactive_mode())
+        await reader.run()
+    except Exception as e:
+        log(f"\n❌ خطای غیرمنتظره: {e}", C.RED)
+        traceback.print_exc()
+
+
+def main():
+    try:
+        asyncio.run(interactive())
     except KeyboardInterrupt:
-        print(c("\n\n⚠️  توسط کاربر متوقف شد.", Colors.YELLOW))
+        log("\n\n⚠️  متوقف شد.", C.YELLOW)
         sys.exit(0)
     except Exception as e:
-        print(c(f"\n\n❌ خطای غیرمنتظره: {e}", Colors.RED))
-        import traceback
+        log(f"\n\n❌ خطا: {e}", C.RED)
         traceback.print_exc()
         sys.exit(1)
 
