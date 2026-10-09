@@ -1,0 +1,78 @@
+{
+  "candles": 302,
+  "interval": "sds_sym_1",
+  "time_from": 1791542940,
+  "time_to": 1791561000,
+  "time_from_iso": "2026-10-09T10:49:00+00:00",
+  "time_to_iso": "2026-10-09T15:50:00+00:00",
+  "duration_hours": 5.02,
+  "last": {
+    "open": 2490.64,
+    "high": 2491.2,
+    "low": 2490.64,
+    "close": 2491.2,
+    "volume": 6.1073
+  },
+  "high_max": 2520.54,
+  "low_min": 2476.87,
+  "close_max": 2519.86,
+  "close_min": 2478.34,
+  "average_close": 2494.4862913907286,
+  "range": 43.67000000000007,
+  "range_percent": 1.7542450158472587,
+  "volatility_std": 0.083346,
+  "volume_total": 54204.2771,
+  "volume_avg": 179.48436125827814,
+  "volume_max": 2515.6783,
+  "change_absolute": 1.81,
+  "change_percent": 0.0727,
+  "latest_indicators": {
+    "Volume": {
+      "time": 1791561000,
+      "values": [
+        6.1073,
+        0.0,
+        101.49899000000165
+      ]
+    },
+    "Volume_2": {
+      "time": 1791561000,
+      "values": [
+        6.1073,
+        0.0,
+        101.49899000000165
+      ]
+    },
+    "RSI": {
+      "time": 1791561000,
+      "values": [
+        53.87521934968988
+      ]
+    },
+    "MACD": {
+      "time": 1791561000,
+      "values": [
+        0.26799051980378863,
+        0.358860615674247,
+        -0.09087009587045836
+      ]
+    },
+    "StochasticRSI": {
+      "time": 1791561000,
+      "values": [
+        38.131343509280235,
+        23.171882867239773
+      ]
+    }
+  },
+  "quote_lp": 2491.19,
+  "quote_ch": 16.39,
+  "quote_chp": 0.66,
+  "quote_volume": 134920.322,
+  "quote_high_price": 2520.54,
+  "quote_low_price": 2471.05,
+  "quote_open_price": 2474.88,
+  "quote_bid": 2491.19,
+  "quote_ask": 2491.2,
+  "quote_current_session": "market"
+}

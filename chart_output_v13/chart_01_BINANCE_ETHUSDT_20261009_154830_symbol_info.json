@@ -1,0 +1,24 @@
+{
+  "type": "spot",
+  "has_intraday": true,
+  "exchange": "Binance",
+  "currency_code": "USDT",
+  "session_display": "24x7",
+  "description": "Ethereum / TetherUS",
+  "minmov": 1,
+  "pricescale": 100,
+  "pointvalue": 1.0,
+  "listed_exchange": "BINANCE",
+  "typespecs": [
+    "crypto"
+  ],
+  "full_name": "BINANCE:ETHUSDT",
+  "minmove2": 0,
+  "timezone": "Etc/UTC",
+  "pro_name": "BINANCE:ETHUSDT",
+  "session": "24x7",
+  "short_description": "Ethereum / TetherUS",
+  "base_currency": "ETH",
+  "fractional": false,
+  "is_tradable": true
+}

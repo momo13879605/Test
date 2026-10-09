@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-10-09T15:50:17.412743+00:00",
+  "version": "13.0",
+  "interval": "1",
+  "charts": [
+    {
+      "index": 0,
+      "symbol": "BINANCE:BTCUSDT",
+      "interval": "sds_sym_1",
+      "match": true,
+      "files": [
+        "chart_00_BINANCE_BTCUSDT_20261009_154830_full.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_154830_candles.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_154830_indicators.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_154830_symbol_info.json",
+        "chart_00_BINANCE_BTCUSDT_20261009_154830_stats.json"
+      ]
+    },
+    {
+      "index": 1,
+      "symbol": "BINANCE:ETHUSDT",
+      "interval": "sds_sym_1",
+      "match": true,
+      "files": [
+        "chart_01_BINANCE_ETHUSDT_20261009_154830_full.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_154830_candles.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_154830_indicators.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_154830_symbol_info.json",
+        "chart_01_BINANCE_ETHUSDT_20261009_154830_stats.json"
+      ]
+    },
+    {
+      "index": 2,
+      "symbol": "BINANCE:SOLUSDT",
+      "interval": "sds_sym_1",
+      "match": true,
+      "files": [
+        "chart_02_BINANCE_SOLUSDT_20261009_154830_full.json",
+        "chart_02_BINANCE_SOLUSDT_20261009_154830_candles.json",
+        "chart_02_BINANCE_SOLUSDT_20261009_154830_indicators.json",
+        "chart_02_BINANCE_SOLUSDT_20261009_154830_symbol_info.json",
+        "chart_02_BINANCE_SOLUSDT_20261009_154830_stats.json"
+      ]
+    },
+    {
+      "index": 3,
+      "symbol": "TVC:GOLD",
+      "interval": "sds_sym_1",
+      "match": true,
+      "files": [
+        "chart_03_TVC_GOLD_20261009_154830_full.json",
+        "chart_03_TVC_GOLD_20261009_154830_candles.json",
+        "chart_03_TVC_GOLD_20261009_154830_indicators.json",
+        "chart_03_TVC_GOLD_20261009_154830_symbol_info.json",
+        "chart_03_TVC_GOLD_20261009_154830_stats.json"
+      ]
+    }
+  ]
+}

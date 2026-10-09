@@ -1,0 +1,240 @@
+==============================================================================
+📊 TradingView Multi-Chart Reader v13.0 - Summary
+==============================================================================
+
+Shell URL:    https://source-donii.ir/tread/index.html
+Timestamp:    2026-10-09T15:50:17.414331+00:00
+Interval:     1 minute
+Panels:       4/4
+Preset:       momentum
+Theme:        dark
+
+──────────────────────────────────────────────────────────────────────────────
+[WebSocket Stats]
+──────────────────────────────────────────────────────────────────────────────
+Total messages:  1006
+Message types:
+   du                             : 430
+   qsd                            : 384
+   create_study                   : 20
+   study_loading                  : 20
+   study_completed                : 20
+   quote_completed                : 16
+   quote_add_symbols              : 12
+   quote_fast_symbols             : 12
+   timescale_update               : 12
+   quote_create_session           : 8
+   quote_remove_symbols           : 8
+   ?                              : 4
+   set_auth_token                 : 4
+   set_locale                     : 4
+   set_data_quality               : 4
+   chart_create_session           : 4
+   switch_timezone                : 4
+   resolve_symbol                 : 4
+   create_series                  : 4
+   series_loading                 : 4
+   symbol_resolved                : 4
+   series_completed               : 4
+   request_more_tickmarks         : 4
+   request_studies_metadata       : 4
+   quote_set_fields               : 4
+   quote_hibernate_all            : 4
+   studies_metadata               : 4
+
+──────────────────────────────────────────────────────────────────────────────
+[CHART 1] BINANCE:BTCUSDT (requested_interval=1)
+──────────────────────────────────────────────────────────────────────────────
+Match:             ✅ YES (exact_pro_name)
+WS symbol:         BINANCE:BTCUSDT
+WS interval:       sds_sym_1
+Candles:           302
+Indicators:        5
+Symbol name:       Bitcoin / TetherUS
+Exchange:          Binance
+Timezone:          Etc/UTC
+Pricescale:        100
+
+  ── Statistics ──
+    last close:     82995.82
+    high max:       83528.98
+    low min:        82418.0
+    range:          1110.9800 (1.35%)
+    change:         529.82 (0.6425%)
+    volatility:     0.0646%
+    volume total:   3692.6601
+    volume avg:     12.2274
+    duration:       5.02 hours
+
+  ── Latest Indicators ──
+    StochasticRSI: [36.73836995583874, 23.87293097651543]
+    MACD        : [5.239417930337368, 7.74716163418587, -2.5077437038485026]
+    Volume      : [1.128, 0.0, 8.056722999999874]
+    Volume_2    : [1.128, 0.0, 8.056722999999874]
+    RSI         : [53.257297250824664]
+
+  ── Quote Snapshot ──
+    lp                : 82995.82
+    bid               : 82995.81
+    ask               : 82995.82
+    ch                : 1241.37
+    chp               : 1.52
+    volume            : 8788.99447
+    high_price        : 83528.98
+    low_price         : 81603.52
+    current_session   : market
+
+  ── Indicators Detail ──
+    VCHdyQ      : StochasticRSI        (  402 pts)
+    vtK8XZ      : MACD                 (  402 pts)
+    xsAIfY      : Volume               (  402 pts)
+    upzSPB      : Volume_2             (  402 pts) [dedup of xsAIfY]
+    GbJVKt      : RSI                  (  402 pts)
+
+──────────────────────────────────────────────────────────────────────────────
+[CHART 2] BINANCE:ETHUSDT (requested_interval=1)
+──────────────────────────────────────────────────────────────────────────────
+Match:             ✅ YES (exact_pro_name)
+WS symbol:         BINANCE:ETHUSDT
+WS interval:       sds_sym_1
+Candles:           302
+Indicators:        5
+Symbol name:       Ethereum / TetherUS
+Exchange:          Binance
+Timezone:          Etc/UTC
+Pricescale:        100
+
+  ── Statistics ──
+    last close:     2491.2
+    high max:       2520.54
+    low min:        2476.87
+    range:          43.6700 (1.75%)
+    change:         1.81 (0.0727%)
+    volatility:     0.0833%
+    volume total:   54204.2771
+    volume avg:     179.4844
+    duration:       5.02 hours
+
+  ── Latest Indicators ──
+    Volume      : [6.1073, 0.0, 101.49899000000165]
+    Volume_2    : [6.1073, 0.0, 101.49899000000165]
+    RSI         : [53.87521934968988]
+    MACD        : [0.26799051980378863, 0.358860615674247, -0.09087009587045836]
+    StochasticRSI: [38.131343509280235, 23.171882867239773]
+
+  ── Quote Snapshot ──
+    lp                : 2491.19
+    bid               : 2491.19
+    ask               : 2491.2
+    ch                : 16.39
+    chp               : 0.66
+    volume            : 134920.322
+    high_price        : 2520.54
+    low_price         : 2471.05
+    current_session   : market
+
+  ── Indicators Detail ──
+    8QGkCh      : Volume               (  402 pts)
+    z8zOnn      : Volume_2             (  402 pts) [dedup of 8QGkCh]
+    eYEh9z      : RSI                  (  402 pts)
+    l6KhHX      : MACD                 (  402 pts)
+    EPTDZf      : StochasticRSI        (  402 pts)
+
+──────────────────────────────────────────────────────────────────────────────
+[CHART 3] BINANCE:SOLUSDT (requested_interval=1)
+──────────────────────────────────────────────────────────────────────────────
+Match:             ✅ YES (exact_pro_name)
+WS symbol:         BINANCE:SOLUSDT
+WS interval:       sds_sym_1
+Candles:           302
+Indicators:        5
+Symbol name:       SOL / TetherUS
+Exchange:          Binance
+Timezone:          Etc/UTC
+Pricescale:        100
+
+  ── Statistics ──
+    last close:     109.81
+    high max:       112.06
+    low min:        109.17
+    range:          2.8900 (2.64%)
+    change:         0.36 (0.3289%)
+    volatility:     0.1075%
+    volume total:   535669.054
+    volume avg:     1773.7386
+    duration:       5.02 hours
+
+  ── Latest Indicators ──
+    Volume      : [253.257, 0.0, 1215.9456500000001]
+    Volume_2    : [253.257, 0.0, 1215.9456500000001]
+    MACD        : [0.03209790323913353, 0.02213269416417916, 0.009965209074954368]
+    RSI         : [55.54671292786382]
+    StochasticRSI: [49.10455359069849, 48.28582293302361]
+
+  ── Quote Snapshot ──
+    lp                : 109.81
+    bid               : 109.81
+    ask               : 109.82
+    ch                : 0.19
+    chp               : 0.17
+    volume            : 1390375.701
+    high_price        : 112.06
+    low_price         : 108.8
+    current_session   : market
+
+  ── Indicators Detail ──
+    539aqx      : Volume               (  402 pts)
+    AlDMOe      : Volume_2             (  402 pts) [dedup of 539aqx]
+    a0PG3i      : MACD                 (  402 pts)
+    TLqgIs      : RSI                  (  402 pts)
+    E6ja3T      : StochasticRSI        (  402 pts)
+
+──────────────────────────────────────────────────────────────────────────────
+[CHART 4] TVC:GOLD (requested_interval=1)
+──────────────────────────────────────────────────────────────────────────────
+Match:             ✅ YES (exact_pro_name)
+WS symbol:         TVC:GOLD
+WS interval:       sds_sym_1
+Candles:           302
+Indicators:        5
+Symbol name:       Gold
+Exchange:          TVC
+Timezone:          America/New_York
+Pricescale:        1000
+
+  ── Statistics ──
+    last close:     4191.066
+    high max:       4196.56
+    low min:        4168.447
+    range:          28.1130 (0.67%)
+    change:         10.726 (0.2566%)
+    volatility:     0.0349%
+    volume total:   738736.0
+    volume avg:     2446.1457
+    duration:       5.02 hours
+
+  ── Latest Indicators ──
+    Volume      : [614.0, 0.0, 2084.35]
+    Volume_2    : [614.0, 0.0, 2084.35]
+    MACD        : [0.39519022293461603, 0.4713776486025121, -0.07618742566789605]
+    StochasticRSI: [71.57252864536896, 56.33543515427234]
+    RSI         : [58.79106980407423]
+
+  ── Quote Snapshot ──
+    lp                : 4191.1
+    bid               : 4191.08
+    ask               : 4191.39
+    ch                : 57.24
+    chp               : 1.38
+    volume            : 0
+    high_price        : 4207.54
+    low_price         : 4130.85
+    current_session   : market
+
+  ── Indicators Detail ──
+    gyC4kO      : Volume               (  402 pts)
+    OfzR1b      : Volume_2             (  402 pts) [dedup of gyC4kO]
+    AlVFzx      : MACD                 (  402 pts)
+    m5Zi8I      : StochasticRSI        (  402 pts)
+    qjbm5m      : RSI                  (  402 pts)
+

@@ -1,0 +1,23 @@
+{
+  "type": "commodity",
+  "has_intraday": true,
+  "exchange": "TVC",
+  "currency_code": "USD",
+  "session_display": "1800-1700",
+  "description": "Gold",
+  "minmov": 1,
+  "pricescale": 1000,
+  "pointvalue": 1.0,
+  "listed_exchange": "TVC",
+  "typespecs": [
+    "cfd"
+  ],
+  "full_name": "TVC:GOLD",
+  "minmove2": 1,
+  "timezone": "America/New_York",
+  "pro_name": "TVC:GOLD",
+  "session": "1800-1700",
+  "short_description": "Gold",
+  "fractional": false,
+  "is_tradable": true
+}
