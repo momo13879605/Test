@@ -1,0 +1,1461 @@
+<!DOCTYPE html><html lang="fa" dir="rtl"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Multi-Chart Pro</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg: #0a0e17;
+            --panel: #131722;
+            --panel-2: #1e222d;
+            --border: #2a2e39;
+            --hover: #2a2e39;
+            --text: #d1d4dc;
+            --text-dim: #787b86;
+            --accent: #2962ff;
+            --accent-hover: #1e53e5;
+            --green: #26a69a;
+            --red: #ef5350;
+            --radius: 6px;
+            --toolbar-h: 48px;
+        }
+
+        [data-theme="light"] {
+            --bg: #ffffff;
+            --panel: #f7f8fa;
+            --panel-2: #eef1f5;
+            --border: #e0e3eb;
+            --hover: #e4e8ee;
+            --text: #131722;
+            --text-dim: #606060;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, system-ui, -apple-system, sans-serif;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ========== Layout ========== */
+        .app {
+            display: grid;
+            grid-template-rows: var(--toolbar-h) 1fr;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ========== Toolbar ========== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 0 12px;
+            gap: 12px;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-left: 12px;
+            border-left: 1px solid var(--border);
+            height: 100%;
+        }
+
+        .brand-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, var(--accent), #7e57c2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 13px;
+            box-shadow: 0 3px 10px rgba(41, 98, 255, 0.35);
+        }
+
+        .brand-name {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+
+        .brand-name span {
+            color: var(--accent);
+        }
+
+        /* ========== Layout Switcher ========== */
+        .layout-switcher {
+            display: flex;
+            gap: 2px;
+            background: var(--panel-2);
+            padding: 3px;
+            border-radius: var(--radius);
+            height: 34px;
+            align-items: center;
+        }
+
+        .layout-btn {
+            width: 32px;
+            height: 28px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+        }
+
+        .layout-btn:hover {
+            color: var(--text);
+            background: var(--hover);
+        }
+
+        .layout-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .layout-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* ========== Separator ========== */
+        .sep {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+        }
+
+        /* ========== Preset Selector ========== */
+        .preset-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .preset-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        .preset-select {
+            height: 34px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            padding: 0 28px 0 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23787b86' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: left 8px center;
+            transition: all 0.15s ease;
+        }
+
+        .preset-select:hover {
+            border-color: var(--accent);
+        }
+
+        .preset-select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.15);
+        }
+
+        .preset-select option {
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        /* ========== Right Side ========== */
+        .toolbar-right {
+            margin-right: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 34px;
+            height: 34px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+            font-size: 13px;
+        }
+
+        .icon-btn:hover {
+            background: var(--hover);
+            color: var(--text);
+            border-color: var(--accent);
+        }
+
+        .icon-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        /* ========== Grid Area ========== */
+        .grid-area {
+            display: grid;
+            gap: 2px;
+            background: var(--border);
+            padding: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .grid-area[data-layout="1"] {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        .grid-area[data-layout="2"] {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        .grid-area[data-layout="4"] {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+        }
+
+        .grid-area[data-layout="6"] {
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+        }
+
+        /* ========== Chart Panel ========== */
+        .chart-panel {
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            min-height: 0;
+            min-width: 0;
+        }
+
+        .chart-panel.active {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+
+        /* ========== Panel Toolbar ========== */
+        .panel-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 6px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            height: 34px;
+            flex-shrink: 0;
+        }
+
+        .panel-input {
+            height: 26px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            padding: 0 8px;
+            font-size: 11px;
+            font-weight: 600;
+            outline: none;
+            transition: all 0.15s ease;
+            width: 130px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.3px;
+        }
+
+        .panel-input:focus {
+            border-color: var(--accent);
+            background: var(--bg);
+        }
+
+        .panel-select {
+            height: 26px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            padding: 0 22px 0 6px;
+            font-size: 11px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23787b86' stroke-width='3'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: left 6px center;
+            transition: all 0.15s ease;
+        }
+
+        .panel-select:hover {
+            border-color: var(--accent);
+        }
+
+        .panel-btn {
+            width: 26px;
+            height: 26px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .panel-btn:hover {
+            background: var(--hover);
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .panel-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .panel-spacer {
+            flex: 1;
+        }
+
+        .panel-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: var(--panel-2);
+            color: var(--text-dim);
+            letter-spacing: 0.5px;
+            border: 1px solid var(--border);
+        }
+
+        .panel-badge.live {
+            color: var(--green);
+            border-color: rgba(38, 166, 154, 0.3);
+            background: rgba(38, 166, 154, 0.1);
+        }
+
+        /* ========== Chart Container ========== */
+        .chart-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg);
+            min-height: 0;
+        }
+
+        .chart-container iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+        }
+
+        /* ========== Suggestions Dropdown ========== */
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 220px;
+            max-height: 240px;
+            overflow-y: auto;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            display: none;
+            margin-top: 2px;
+        }
+
+        .suggestions.show {
+            display: block;
+        }
+
+        .suggestion-item {
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.1s ease;
+            border-right: 2px solid transparent;
+        }
+
+        .suggestion-item:hover {
+            background: var(--hover);
+            border-right-color: var(--accent);
+        }
+
+        .suggestion-sym {
+            font-weight: 700;
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+        }
+
+        .suggestion-name {
+            color: var(--text-dim);
+            font-size: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .search-wrap {
+            position: relative;
+        }
+
+        /* ========== Loading ========== */
+        .chart-loader {
+            position: absolute;
+            inset: 0;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .chart-loader.hide {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid var(--panel-2);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ========== Toast ========== */
+        .toast-wrap {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 9999;
+        }
+
+        .toast {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 10px 14px;
+            font-size: 12px;
+            color: var(--text);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            animation: slideUp 0.25s ease;
+            min-width: 220px;
+        }
+
+        .toast i {
+            color: var(--accent);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ========== Scrollbar ========== */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-dim);
+        }
+
+        /* ========== Responsive ========== */
+        @media (max-width: 900px) {
+            .brand-name { display: none; }
+            .preset-label { display: none; }
+            .grid-area[data-layout="4"],
+            .grid-area[data-layout="6"] {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr;
+            }
+            .grid-area[data-layout="2"] {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr;
+            }
+        }
+    </style>
+<script src="https://s3.tradingview.com/tv.js"></script></head>
+<body data-theme="dark">
+
+<div class="app">
+
+    <!-- ========== TOOLBAR ========== -->
+    <div class="toolbar">
+        <div class="brand">
+            <div class="brand-icon"><i class="fas fa-chart-line"></i></div>
+            <div class="brand-name">TV<span>Pro</span></div>
+        </div>
+
+        <!-- Layout Switcher -->
+        <div class="layout-switcher" id="layoutSwitcher">
+            <button class="layout-btn active" data-layout="1" title="یک نمودار">
+                <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="14" height="14" rx="1.5"></rect></svg>
+            </button>
+            <button class="layout-btn" data-layout="2" title="دو نمودار">
+                <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6.5" height="14" rx="1.2"></rect><rect x="8.5" y="1" width="6.5" height="14" rx="1.2"></rect></svg>
+            </button>
+            <button class="layout-btn" data-layout="4" title="چهار نمودار">
+                <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6.5" height="6.5" rx="1"></rect><rect x="8.5" y="1" width="6.5" height="6.5" rx="1"></rect><rect x="1" y="8.5" width="6.5" height="6.5" rx="1"></rect><rect x="8.5" y="8.5" width="6.5" height="6.5" rx="1"></rect></svg>
+            </button>
+            <button class="layout-btn" data-layout="6" title="شش نمودار">
+                <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="4.2" height="6.5" rx="0.8"></rect><rect x="5.9" y="1" width="4.2" height="6.5" rx="0.8"></rect><rect x="10.8" y="1" width="4.2" height="6.5" rx="0.8"></rect><rect x="1" y="8.5" width="4.2" height="6.5" rx="0.8"></rect><rect x="5.9" y="8.5" width="4.2" height="6.5" rx="0.8"></rect><rect x="10.8" y="8.5" width="4.2" height="6.5" rx="0.8"></rect></svg>
+            </button>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- Indicator Preset Selector -->
+        <div class="preset-wrap">
+            <span class="preset-label">اندیکاتور:</span>
+            <select class="preset-select" id="indicatorPreset">
+                <option value="clean">تمیز (بدون اندیکاتور)</option>
+                <option value="basic">پایه (MA + Volume)</option>
+                <option value="momentum" selected="">مومنتوم (RSI + MACD + Stoch)</option>
+                <option value="trend">روند (Ichimoku + SuperTrend + EMA)</option>
+                <option value="volatility">نوسان (BB + ATR + Keltner)</option>
+                <option value="pro">حرفه‌ای (همه اندیکاتورها)</option>
+                <option value="scalping">اسکالپ (VWAP + RSI + Stoch RSI)</option>
+                <option value="swing">سوئینگ (Fib + Ichimoku + RSI)</option>
+            </select>
+        </div>
+
+        <div class="toolbar-right">
+            <!-- Sync Toggle -->
+            <button class="icon-btn active" id="syncBtn" title="همگام‌سازی نماد">
+                <i class="fas fa-link"></i>
+            </button>
+
+            <!-- Fullscreen -->
+            <button class="icon-btn" id="fullscreenBtn" title="تمام صفحه">
+                <i class="fas fa-expand"></i>
+            </button>
+
+            <!-- Theme -->
+            <button class="icon-btn" id="themeBtn" title="تم"><i class="fas fa-sun"></i></button>
+        </div>
+    </div>
+
+    <!-- ========== GRID AREA ========== -->
+    <div class="grid-area" id="gridArea" data-layout="1"><div class="chart-panel" data-index="0">
+                <div class="panel-toolbar">
+                    <div class="search-wrap">
+                        <input type="text" class="panel-input" value="BINANCE:BTCUSDT" placeholder="BTCUSDT..." spellcheck="false">
+                        <div class="suggestions"></div>
+                    </div>
+                    <select class="panel-select">
+                        <option value="1">1m</option>
+                        <option value="3">3m</option>
+                        <option value="5">5m</option>
+                        <option value="15">15m</option>
+                        <option value="30">30m</option>
+                        <option value="60">1H</option>
+                        <option value="120">2H</option>
+                        <option value="240">4H</option>
+                        <option value="D">1D</option>
+                        <option value="W">1W</option>
+                        <option value="M">1M</option>
+                    </select>
+                    <button class="panel-btn" data-action="screenshot" title="اسکرین‌شات">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                    <button class="panel-btn" data-action="reload" title="بارگذاری مجدد">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                    <div class="panel-spacer"></div>
+                    <div class="panel-badge live">LIVE</div>
+                </div>
+                <div class="chart-container" id="tv_chart_0_1791551799302">
+                    <div class="chart-loader hide"><div class="spinner"></div></div>
+                <div class="tradingview-widget-container" style="position: absolute; inset: 0px;"><div class="tradingview-widget-container__widget" id="tv_chart_0_1791551799302_inner" style="height: 100%; width: 100%;"><div id="tradingview_df946-wrapper" style="position: relative; box-sizing: content-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Trebuchet MS&quot;, Roboto, Ubuntu, sans-serif; margin: 0px auto !important; padding: 0px !important; width: 100%; height: 100%;"><iframe title="advanced chart TradingView widget" lang="en" id="tradingview_df946" frameborder="0" allowtransparency="true" scrolling="no" allowfullscreen="true" src="https://s.tradingview.com/widgetembed/?hideideas=1&amp;overrides=%7B%22paneProperties.background%22%3A%22%230a0e17%22%2C%22paneProperties.backgroundType%22%3A%22solid%22%2C%22paneProperties.vertGridProperties.color%22%3A%22%231e222d%22%2C%22paneProperties.horzGridProperties.color%22%3A%22%231e222d%22%2C%22scalesProperties.textColor%22%3A%22%23787b86%22%2C%22mainSeriesProperties.candleStyle.upColor%22%3A%22%2326a69a%22%2C%22mainSeriesProperties.candleStyle.downColor%22%3A%22%23ef5350%22%2C%22mainSeriesProperties.candleStyle.borderUpColor%22%3A%22%2326a69a%22%2C%22mainSeriesProperties.candleStyle.borderDownColor%22%3A%22%23ef5350%22%2C%22mainSeriesProperties.candleStyle.wickUpColor%22%3A%22%2326a69a%22%2C%22mainSeriesProperties.candleStyle.wickDownColor%22%3A%22%23ef5350%22%7D&amp;enabled_features=%5B%22study_templates%22%2C%22side_toolbar_in_fullscreen_mode%22%2C%22header_in_fullscreen_mode%22%2C%22hide_left_toolbar_by_default%22%5D&amp;disabled_features=%5B%22header_symbol_search%22%2C%22symbol_search_hot_key%22%2C%22use_localstorage_for_settings%22%5D&amp;locale=en#%7B%22symbol%22%3A%22BINANCE%3ABTCUSDT%22%2C%22frameElementId%22%3A%22tradingview_df946%22%2C%22interval%22%3A%2260%22%2C%22hide_side_toolbar%22%3A%220%22%2C%22allow_symbol_change%22%3A%221%22%2C%22save_image%22%3A%221%22%2C%22studies%22%3A%22RSI%40tv-basicstudies%5Cu001fMACD%40tv-basicstudies%5Cu001fStochasticRSI%40tv-basicstudies%5Cu001fVolume%40tv-basicstudies%22%2C%22theme%22%3A%22dark%22%2C%22style%22%3A%221%22%2C%22timezone%22%3A%22Asia%2FTehran%22%2C%22withdateranges%22%3A%221%22%2C%22show_popup_button%22%3A%221%22%2C%22studies_overrides%22%3A%22%7B%7D%22%2C%22utm_source%22%3A%22source-donii.ir%22%2C%22utm_medium%22%3A%22widget%22%2C%22utm_campaign%22%3A%22chart%22%2C%22utm_term%22%3A%22BINANCE%3ABTCUSDT%22%2C%22page-uri%22%3A%22source-donii.ir%2Ftread%2Findex.html%22%7D" style="width: 100%; height: 100%; margin: 0px !important; padding: 0px !important;"></iframe></div></div></div></div>
+            </div></div>
+
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+(function() {
+    'use strict';
+
+    // ============================================================
+    // CONFIG
+    // ============================================================
+    const CONFIG = {
+        storage: {
+            theme: 'tvp_theme',
+            layout: 'tvp_layout',
+            preset: 'tvp_preset',
+            sync: 'tvp_sync',
+            panels: 'tvp_panels'
+        },
+        defaults: {
+            layout: '1',
+            preset: 'momentum',
+            theme: 'dark',
+            sync: true
+        }
+    };
+
+    // ============================================================
+    // INDICATOR PRESETS - اندیکاتورهای تخصصی TradingView
+    // ============================================================
+    const INDICATOR_PRESETS = {
+        clean: {
+            name: 'تمیز',
+            studies: [],
+            description: 'بدون اندیکاتور'
+        },
+        basic: {
+            name: 'پایه',
+            studies: [
+                'MAExp@tv-basicstudies',
+                'Volume@tv-basicstudies'
+            ]
+        },
+        momentum: {
+            name: 'مومنتوم',
+            studies: [
+                'RSI@tv-basicstudies',
+                'MACD@tv-basicstudies',
+                'StochasticRSI@tv-basicstudies',
+                'Volume@tv-basicstudies'
+            ]
+        },
+        trend: {
+            name: 'روند',
+            studies: [
+                'IchimokuCloud@tv-basicstudies',
+                'MASimple@tv-basicstudies',
+                'MAExp@tv-basicstudies',
+                'MAExp@tv-basicstudies',
+                'PivotPointsStandard@tv-basicstudies',
+                'Volume@tv-basicstudies'
+            ]
+        },
+        volatility: {
+            name: 'نوسان',
+            studies: [
+                'BB@tv-basicstudies',
+                'AverageTrueRange@tv-basicstudies',
+                'KeltnerChannels@tv-basicstudies',
+                'Volume@tv-basicstudies'
+            ]
+        },
+        pro: {
+            name: 'حرفه‌ای',
+            studies: [
+                'IchimokuCloud@tv-basicstudies',
+                'BB@tv-basicstudies',
+                'RSI@tv-basicstudies',
+                'MACD@tv-basicstudies',
+                'StochasticRSI@tv-basicstudies',
+                'MAExp@tv-basicstudies',
+                'MASimple@tv-basicstudies',
+                'AverageTrueRange@tv-basicstudies',
+                'Volume@tv-basicstudies',
+                'PivotPointsStandard@tv-basicstudies'
+            ]
+        },
+        scalping: {
+            name: 'اسکالپ',
+            studies: [
+                'VWAP@tv-basicstudies',
+                'RSI@tv-basicstudies',
+                'StochasticRSI@tv-basicstudies',
+                'MAExp@tv-basicstudies',
+                'Volume@tv-basicstudies'
+            ]
+        },
+        swing: {
+            name: 'سوئینگ',
+            studies: [
+                'IchimokuCloud@tv-basicstudies',
+                'RSI@tv-basicstudies',
+                'MACD@tv-basicstudies',
+                'MAExp@tv-basicstudies',
+                'MAExp@tv-basicstudies',
+                'Volume@tv-basicstudies'
+            ]
+        }
+    };
+
+    // ============================================================
+    // SYMBOL DATABASE
+    // ============================================================
+    const SYMBOLS = [
+        // Crypto
+        { s: 'BINANCE:BTCUSDT', n: 'Bitcoin / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:ETHUSDT', n: 'Ethereum / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:BNBUSDT', n: 'BNB / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:SOLUSDT', n: 'Solana / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:XRPUSDT', n: 'Ripple / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:ADAUSDT', n: 'Cardano / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:DOGEUSDT', n: 'Dogecoin / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:AVAXUSDT', n: 'Avalanche / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:DOTUSDT', n: 'Polkadot / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:LINKUSDT', n: 'Chainlink / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:MATICUSDT', n: 'Polygon / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:LTCUSDT', n: 'Litecoin / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:TRXUSDT', n: 'TRON / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:ATOMUSDT', n: 'Cosmos / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:NEARUSDT', n: 'NEAR Protocol / USDT', ex: 'BINANCE' },
+        { s: 'BINANCE:APTUSDT', n: 'Aptos / USDT', ex: 'BINANCE' },
+        
+        // Forex
+        { s: 'FX:EURUSD', n: 'Euro / US Dollar', ex: 'FX' },
+        { s: 'FX:GBPUSD', n: 'British Pound / USD', ex: 'FX' },
+        { s: 'FX:USDJPY', n: 'USD / Japanese Yen', ex: 'FX' },
+        { s: 'FX:USDCHF', n: 'USD / Swiss Franc', ex: 'FX' },
+        { s: 'FX:AUDUSD', n: 'AUD / USD', ex: 'FX' },
+        { s: 'FX:USDCAD', n: 'USD / CAD', ex: 'FX' },
+        { s: 'FX:NZDUSD', n: 'NZD / USD', ex: 'FX' },
+        { s: 'FX:EURGBP', n: 'EUR / GBP', ex: 'FX' },
+        { s: 'FX:EURJPY', n: 'EUR / JPY', ex: 'FX' },
+        { s: 'FX:GBPJPY', n: 'GBP / JPY', ex: 'FX' },
+        
+        // Metals
+        { s: 'TVC:GOLD', n: 'Gold Spot', ex: 'TVC' },
+        { s: 'TVC:SILVER', n: 'Silver Spot', ex: 'TVC' },
+        { s: 'TVC:PLATINUM', n: 'Platinum Spot', ex: 'TVC' },
+        { s: 'TVC:COPPER', n: 'Copper', ex: 'TVC' },
+        { s: 'TVC:PALLADIUM', n: 'Palladium', ex: 'TVC' },
+        
+        // Commodities
+        { s: 'TVC:USOIL', n: 'Crude Oil WTI', ex: 'TVC' },
+        { s: 'TVC:UKOIL', n: 'Brent Crude Oil', ex: 'TVC' },
+        { s: 'TVC:NATURALGAS', n: 'Natural Gas', ex: 'TVC' },
+        
+        // Indices
+        { s: 'SP:SPX', n: 'S&P 500', ex: 'SP' },
+        { s: 'NASDAQ:NDX', n: 'Nasdaq 100', ex: 'NASDAQ' },
+        { s: 'DJ:DJI', n: 'Dow Jones', ex: 'DJ' },
+        { s: 'TVC:DXY', n: 'US Dollar Index', ex: 'TVC' },
+        { s: 'INDEX:DAX', n: 'DAX', ex: 'INDEX' },
+        { s: 'TVC:NI225', n: 'Nikkei 225', ex: 'TVC' },
+        
+        // US Stocks
+        { s: 'NASDAQ:AAPL', n: 'Apple Inc.', ex: 'NASDAQ' },
+        { s: 'NASDAQ:TSLA', n: 'Tesla Inc.', ex: 'NASDAQ' },
+        { s: 'NASDAQ:MSFT', n: 'Microsoft', ex: 'NASDAQ' },
+        { s: 'NASDAQ:GOOGL', n: 'Alphabet', ex: 'NASDAQ' },
+        { s: 'NASDAQ:AMZN', n: 'Amazon', ex: 'NASDAQ' },
+        { s: 'NASDAQ:META', n: 'Meta', ex: 'NASDAQ' },
+        { s: 'NASDAQ:NVDA', n: 'NVIDIA', ex: 'NASDAQ' },
+        { s: 'NASDAQ:NFLX', n: 'Netflix', ex: 'NASDAQ' },
+        { s: 'NYSE:BRK.B', n: 'Berkshire Hathaway', ex: 'NYSE' },
+        { s: 'NYSE:JPM', n: 'JPMorgan Chase', ex: 'NYSE' }
+    ];
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    const State = {
+        layout: localStorage.getItem(CONFIG.storage.layout) || CONFIG.defaults.layout,
+        preset: localStorage.getItem(CONFIG.storage.preset) || CONFIG.defaults.preset,
+        theme: localStorage.getItem(CONFIG.storage.theme) || CONFIG.defaults.theme,
+        sync: localStorage.getItem(CONFIG.storage.sync) !== null 
+            ? localStorage.getItem(CONFIG.storage.sync) === 'true' 
+            : CONFIG.defaults.sync,
+        panels: JSON.parse(localStorage.getItem(CONFIG.storage.panels) || 'null') || [
+            { symbol: 'BINANCE:BTCUSDT', interval: '60' },
+            { symbol: 'BINANCE:ETHUSDT', interval: '60' },
+            { symbol: 'FX:EURUSD', interval: '60' },
+            { symbol: 'TVC:GOLD', interval: '60' },
+            { symbol: 'NASDAQ:AAPL', interval: '60' },
+            { symbol: 'BINANCE:SOLUSDT', interval: '60' }
+        ]
+    };
+
+    // ============================================================
+    // DOM
+    // ============================================================
+    const DOM = {
+        grid: document.getElementById('gridArea'),
+        layoutSwitcher: document.getElementById('layoutSwitcher'),
+        presetSelect: document.getElementById('indicatorPreset'),
+        themeBtn: document.getElementById('themeBtn'),
+        syncBtn: document.getElementById('syncBtn'),
+        fullscreenBtn: document.getElementById('fullscreenBtn'),
+        toastWrap: document.getElementById('toastWrap')
+    };
+
+    // ============================================================
+    // UTILS
+    // ============================================================
+    const Utils = {
+        save(key, value) {
+            try {
+                localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+            } catch (e) {}
+        },
+
+        escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        },
+
+        toast(msg, duration = 2500) {
+            const el = document.createElement('div');
+            el.className = 'toast';
+            el.innerHTML = `<i class="fas fa-check-circle"></i><span>${Utils.escapeHtml(msg)}</span>`;
+            DOM.toastWrap.appendChild(el);
+            setTimeout(() => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(10px)';
+                el.style.transition = 'all 0.25s ease';
+                setTimeout(() => el.remove(), 250);
+            }, duration);
+        }
+    };
+
+    // ============================================================
+    // CHART PANEL
+    // ============================================================
+    class ChartPanel {
+        constructor(index, config) {
+            this.index = index;
+            this.symbol = config.symbol || 'BINANCE:BTCUSDT';
+            this.interval = config.interval || '60';
+            this.el = null;
+            this.chartId = `tv_chart_${index}_${Date.now()}`;
+            this.widget = null;
+            this.render();
+            this.load();
+        }
+
+        render() {
+            const panel = document.createElement('div');
+            panel.className = 'chart-panel';
+            panel.dataset.index = this.index;
+            panel.innerHTML = `
+                <div class="panel-toolbar">
+                    <div class="search-wrap">
+                        <input 
+                            type="text" 
+                            class="panel-input" 
+                            value="${Utils.escapeHtml(this.symbol)}"
+                            placeholder="BTCUSDT..."
+                            spellcheck="false"
+                        >
+                        <div class="suggestions"></div>
+                    </div>
+                    <select class="panel-select">
+                        <option value="1">1m</option>
+                        <option value="3">3m</option>
+                        <option value="5">5m</option>
+                        <option value="15">15m</option>
+                        <option value="30">30m</option>
+                        <option value="60">1H</option>
+                        <option value="120">2H</option>
+                        <option value="240">4H</option>
+                        <option value="D">1D</option>
+                        <option value="W">1W</option>
+                        <option value="M">1M</option>
+                    </select>
+                    <button class="panel-btn" data-action="screenshot" title="اسکرین‌شات">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                    <button class="panel-btn" data-action="reload" title="بارگذاری مجدد">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                    <div class="panel-spacer"></div>
+                    <div class="panel-badge live">LIVE</div>
+                </div>
+                <div class="chart-container" id="${this.chartId}">
+                    <div class="chart-loader"><div class="spinner"></div></div>
+                </div>
+            `;
+
+            DOM.grid.appendChild(panel);
+            this.el = panel;
+
+            // Set interval select
+            const intervalSelect = panel.querySelector('.panel-select');
+            intervalSelect.value = this.interval;
+            
+            // Events
+            this.bindEvents();
+        }
+
+        bindEvents() {
+            const input = this.el.querySelector('.panel-input');
+            const select = this.el.querySelector('.panel-select');
+            const suggestions = this.el.querySelector('.suggestions');
+
+            // Search input
+            input.addEventListener('input', () => {
+                const q = input.value.trim().toUpperCase();
+                if (q.length < 1) {
+                    suggestions.classList.remove('show');
+                    return;
+                }
+                this.showSuggestions(q, suggestions);
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = input.value.trim();
+                    if (val) {
+                        this.setSymbol(val);
+                        suggestions.classList.remove('show');
+                        input.blur();
+                    }
+                } else if (e.key === 'Escape') {
+                    suggestions.classList.remove('show');
+                    input.blur();
+                }
+            });
+
+            input.addEventListener('blur', () => {
+                setTimeout(() => suggestions.classList.remove('show'), 150);
+            });
+
+            input.addEventListener('focus', () => {
+                input.select();
+            });
+
+            // Interval change
+            select.addEventListener('change', () => {
+                this.setInterval(select.value);
+            });
+
+            // Panel buttons
+            this.el.querySelectorAll('.panel-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const action = btn.dataset.action;
+                    if (action === 'reload') {
+                        this.reload();
+                    } else if (action === 'screenshot') {
+                        Utils.toast('از دکمه دوربین در نوار ابزار TradingView استفاده کنید');
+                    }
+                });
+            });
+
+            // Panel focus
+            this.el.addEventListener('click', () => {
+                document.querySelectorAll('.chart-panel').forEach(p => p.classList.remove('active'));
+                this.el.classList.add('active');
+            });
+        }
+
+        showSuggestions(query, container) {
+            const parts = query.split(':');
+            const searchTerm = parts.length > 1 ? parts[1] : query;
+            
+            const results = SYMBOLS.filter(item => 
+                item.s.includes(searchTerm) || 
+                item.n.toUpperCase().includes(searchTerm) ||
+                item.ex.includes(searchTerm)
+            ).slice(0, 10);
+
+            if (results.length === 0) {
+                container.innerHTML = `<div class="suggestion-item">
+                    <span class="suggestion-sym">${Utils.escapeHtml(query)}</span>
+                    <span class="suggestion-name">جستجوی مستقیم</span>
+                </div>`;
+            } else {
+                container.innerHTML = results.map(item => `
+                    <div class="suggestion-item" data-symbol="${item.s}">
+                        <span class="suggestion-sym">${Utils.escapeHtml(item.s.split(':')[1])}</span>
+                        <span class="suggestion-name">${Utils.escapeHtml(item.n)}</span>
+                    </div>
+                `).join('');
+            }
+
+            container.querySelectorAll('.suggestion-item').forEach(el => {
+                el.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    const sym = el.dataset.symbol || query;
+                    this.setSymbol(sym);
+                    container.classList.remove('show');
+                });
+            });
+
+            container.classList.add('show');
+        }
+
+        normalizeSymbol(input) {
+            const upper = input.toUpperCase().trim();
+            if (upper.includes(':')) return upper;
+
+            // Try to find in DB
+            const found = SYMBOLS.find(item => 
+                item.s.split(':')[1] === upper ||
+                item.s.split(':')[1].replace('USDT', '') === upper
+            );
+            if (found) return found.s;
+
+            // Default to Binance
+            return `BINANCE:${upper}USDT`;
+        }
+
+        setSymbol(symbol) {
+            const normalized = this.normalizeSymbol(symbol);
+            this.symbol = normalized;
+            
+            const input = this.el.querySelector('.panel-input');
+            input.value = normalized;
+            
+            this.load();
+            Utils.save(CONFIG.storage.panels, State.panels);
+
+            // Sync if enabled
+            if (State.sync) {
+                SyncManager.syncSymbol(this.index, normalized);
+            }
+        }
+
+        setInterval(interval) {
+            this.interval = interval;
+            this.load();
+            
+            if (State.sync) {
+                SyncManager.syncInterval(this.index, interval);
+            }
+        }
+
+        reload() {
+            const container = document.getElementById(this.chartId);
+            container.innerHTML = '<div class="chart-loader"><div class="spinner"></div></div>';
+            setTimeout(() => this.load(), 100);
+        }
+
+        load() {
+            const container = document.getElementById(this.chartId);
+            if (!container) return;
+
+            // Clear previous widget
+            const loader = container.querySelector('.chart-loader');
+            if (!loader) {
+                container.innerHTML = '<div class="chart-loader"><div class="spinner"></div></div>';
+            }
+
+            // Clear everything except loader
+            container.querySelectorAll('iframe, .tradingview-widget-container').forEach(e => e.remove());
+
+            // Update state
+            State.panels[this.index] = {
+                symbol: this.symbol,
+                interval: this.interval
+            };
+            Utils.save(CONFIG.storage.panels, State.panels);
+
+            // Get studies based on preset
+            const preset = INDICATOR_PRESETS[State.preset] || INDICATOR_PRESETS.momentum;
+            const studies = [...preset.studies];
+
+            // Create widget container
+            const widgetContainer = document.createElement('div');
+            widgetContainer.className = 'tradingview-widget-container';
+            widgetContainer.style.cssText = 'position:absolute;inset:0;';
+            container.appendChild(widgetContainer);
+
+            const widgetDiv = document.createElement('div');
+            widgetDiv.className = 'tradingview-widget-container__widget';
+            widgetDiv.style.cssText = 'height:100%;width:100%;';
+            widgetContainer.appendChild(widgetDiv);
+
+            try {
+                new TradingView.widget({
+                    container_id: widgetDiv.id || (widgetDiv.id = this.chartId + '_inner'),
+                    autosize: true,
+                    symbol: this.symbol,
+                    interval: this.interval,
+                    timezone: 'Asia/Tehran',
+                    theme: State.theme,
+                    style: '1',
+                    locale: 'en',
+                    toolbar_bg: State.theme === 'dark' ? '#131722' : '#f7f8fa',
+                    enable_publishing: false,
+                    allow_symbol_change: true,
+                    hide_side_toolbar: false,
+                    hide_top_toolbar: false,
+                    hide_legend: false,
+                    save_image: true,
+                    withdateranges: true,
+                    details: false,
+                    hotlist: false,
+                    calendar: false,
+                    studies: studies,
+                    show_popup_button: true,
+                    popup_width: '1400',
+                    popup_height: '900',
+                    disabled_features: [
+                        'header_symbol_search',
+                        'symbol_search_hot_key',
+                        'use_localstorage_for_settings'
+                    ],
+                    enabled_features: [
+                        'study_templates',
+                        'side_toolbar_in_fullscreen_mode',
+                        'header_in_fullscreen_mode',
+                        'hide_left_toolbar_by_default'
+                    ],
+                    overrides: {
+                        'paneProperties.background': State.theme === 'dark' ? '#0a0e17' : '#ffffff',
+                        'paneProperties.backgroundType': 'solid',
+                        'paneProperties.vertGridProperties.color': State.theme === 'dark' ? '#1e222d' : '#f0f3fa',
+                        'paneProperties.horzGridProperties.color': State.theme === 'dark' ? '#1e222d' : '#f0f3fa',
+                        'scalesProperties.textColor': State.theme === 'dark' ? '#787b86' : '#131722',
+                        'mainSeriesProperties.candleStyle.upColor': '#26a69a',
+                        'mainSeriesProperties.candleStyle.downColor': '#ef5350',
+                        'mainSeriesProperties.candleStyle.borderUpColor': '#26a69a',
+                        'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
+                        'mainSeriesProperties.candleStyle.wickUpColor': '#26a69a',
+                        'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350'
+                    }
+                });
+
+                // Hide loader after widget loads
+                setTimeout(() => {
+                    const l = container.querySelector('.chart-loader');
+                    if (l) l.classList.add('hide');
+                }, 1200);
+
+            } catch (error) {
+                console.error('Widget error:', error);
+                const loader = container.querySelector('.chart-loader');
+                if (loader) {
+                    loader.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#ef5350;font-size:24px;"></i>`;
+                }
+            }
+        }
+
+        destroy() {
+            const container = document.getElementById(this.chartId);
+            if (container) {
+                container.querySelectorAll('iframe, .tradingview-widget-container').forEach(e => e.remove());
+            }
+            this.el.remove();
+        }
+    }
+
+    // ============================================================
+    // SYNC MANAGER - همگام‌سازی بین نمودارها
+    // ============================================================
+    const SyncManager = {
+        panels: [],
+
+        syncSymbol(sourceIndex, symbol) {
+            this.panels.forEach((panel, idx) => {
+                if (idx !== sourceIndex && panel && panel.symbol !== symbol) {
+                    panel.symbol = symbol;
+                    panel.el.querySelector('.panel-input').value = symbol;
+                    panel.load();
+                }
+            });
+        },
+
+        syncInterval(sourceIndex, interval) {
+            this.panels.forEach((panel, idx) => {
+                if (idx !== sourceIndex && panel && panel.interval !== interval) {
+                    panel.interval = interval;
+                    panel.el.querySelector('.panel-select').value = interval;
+                    panel.load();
+                }
+            });
+        }
+    };
+
+    // ============================================================
+    // LAYOUT MANAGER
+    // ============================================================
+    const LayoutManager = {
+        apply(layout) {
+            const count = parseInt(layout);
+            const currentCount = SyncManager.panels.length;
+
+            // Remove existing panels
+            SyncManager.panels.forEach(p => p && p.destroy());
+            SyncManager.panels = [];
+            DOM.grid.innerHTML = '';
+
+            // Create new panels
+            for (let i = 0; i < count; i++) {
+                const config = State.panels[i] || {
+                    symbol: this.getDefaultSymbol(i),
+                    interval: '60'
+                };
+                const panel = new ChartPanel(i, config);
+                SyncManager.panels.push(panel);
+            }
+
+            DOM.grid.setAttribute('data-layout', layout);
+            State.layout = layout;
+            Utils.save(CONFIG.storage.layout, layout);
+
+            // Update switcher
+            DOM.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.layout === layout);
+            });
+
+            // Activate first panel
+            setTimeout(() => {
+                const first = document.querySelector('.chart-panel');
+                if (first) first.classList.add('active');
+            }, 100);
+        },
+
+        getDefaultSymbol(index) {
+            const defaults = [
+                'BINANCE:BTCUSDT',
+                'BINANCE:ETHUSDT',
+                'FX:EURUSD',
+                'TVC:GOLD',
+                'NASDAQ:AAPL',
+                'BINANCE:SOLUSDT'
+            ];
+            return defaults[index] || 'BINANCE:BTCUSDT';
+        }
+    };
+
+    // ============================================================
+    // UI CONTROLLER
+    // ============================================================
+    const UI = {
+        init() {
+            // Set theme
+            document.body.setAttribute('data-theme', State.theme);
+            this.updateThemeIcon();
+
+            // Set preset
+            DOM.presetSelect.value = State.preset;
+
+            // Set sync
+            DOM.syncBtn.classList.toggle('active', State.sync);
+
+            // Init panels
+            SyncManager.panels = [];
+            const configs = State.panels.slice(0, parseInt(State.layout));
+            for (let i = 0; i < parseInt(State.layout); i++) {
+                const config = configs[i] || {
+                    symbol: LayoutManager.getDefaultSymbol(i),
+                    interval: '60'
+                };
+                const panel = new ChartPanel(i, config);
+                SyncManager.panels.push(panel);
+            }
+
+            DOM.grid.setAttribute('data-layout', State.layout);
+            DOM.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.layout === State.layout);
+            });
+
+            this.bindEvents();
+        },
+
+        bindEvents() {
+            // Layout switcher
+            DOM.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const layout = btn.dataset.layout;
+                    if (layout === State.layout) return;
+                    LayoutManager.apply(layout);
+                    Utils.toast(`چیدمان ${layout} نمودار فعال شد`);
+                });
+            });
+
+            // Indicator preset
+            DOM.presetSelect.addEventListener('change', (e) => {
+                State.preset = e.target.value;
+                Utils.save(CONFIG.storage.preset, State.preset);
+                
+                // Reload all panels with new preset
+                SyncManager.panels.forEach(panel => {
+                    if (panel) panel.load();
+                });
+                
+                const presetName = INDICATOR_PRESETS[State.preset]?.name || State.preset;
+                Utils.toast(`اندیکاتورها: ${presetName}`);
+            });
+
+            // Theme toggle
+            DOM.themeBtn.addEventListener('click', () => {
+                State.theme = State.theme === 'dark' ? 'light' : 'dark';
+                document.body.setAttribute('data-theme', State.theme);
+                Utils.save(CONFIG.storage.theme, State.theme);
+                this.updateThemeIcon();
+
+                // Reload panels for theme change
+                SyncManager.panels.forEach(panel => {
+                    if (panel) panel.load();
+                });
+            });
+
+            // Sync toggle
+            DOM.syncBtn.addEventListener('click', () => {
+                State.sync = !State.sync;
+                DOM.syncBtn.classList.toggle('active', State.sync);
+                Utils.save(CONFIG.storage.sync, State.sync ? 'true' : 'false');
+                
+                const icon = DOM.syncBtn.querySelector('i');
+                if (State.sync) {
+                    icon.className = 'fas fa-link';
+                    Utils.toast('همگام‌سازی فعال شد');
+                } else {
+                    icon.className = 'fas fa-link-slash';
+                    Utils.toast('همگام‌سازی غیرفعال شد');
+                }
+            });
+
+            // Fullscreen
+            DOM.fullscreenBtn.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+
+            document.addEventListener('fullscreenchange', () => {
+                DOM.fullscreenBtn.innerHTML = document.fullscreenElement 
+                    ? '<i class="fas fa-compress"></i>' 
+                    : '<i class="fas fa-expand"></i>';
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Ctrl+K - focus search of active panel
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    const active = document.querySelector('.chart-panel.active') || document.querySelector('.chart-panel');
+                    if (active) {
+                        const input = active.querySelector('.panel-input');
+                        input.focus();
+                        input.select();
+                    }
+                }
+
+                // Ctrl+1/2/3/4 - switch layouts
+                if ((e.ctrlKey || e.metaKey) && ['1', '2', '4', '6'].includes(e.key)) {
+                    e.preventDefault();
+                    const layout = e.key === '6' ? '6' : e.key;
+                    LayoutManager.apply(layout);
+                }
+
+                // Ctrl+T - toggle theme
+                if ((e.ctrlKey || e.metaKey) && e.key === 't') {
+                    e.preventDefault();
+                    DOM.themeBtn.click();
+                }
+            });
+        },
+
+        updateThemeIcon() {
+            DOM.themeBtn.innerHTML = State.theme === 'dark' 
+                ? '<i class="fas fa-sun"></i>' 
+                : '<i class="fas fa-moon"></i>';
+        }
+    };
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    function init() {
+        console.log('%c📊 TradingView Multi-Chart Pro', 'color:#2962ff;font-size:18px;font-weight:bold;');
+        
+        // Wait for TradingView library
+        if (typeof TradingView === 'undefined') {
+            console.log('Loading TradingView library...');
+            setTimeout(init, 200);
+            return;
+        }
+
+        UI.init();
+        console.log('%c✓ Ready', 'color:#26a69a;font-weight:bold;');
+        
+        setTimeout(() => {
+            Utils.toast('TradingView آماده است - Ctrl+K برای جستجو', 4000);
+        }, 1000);
+    }
+
+    // Load TradingView library dynamically
+    if (typeof TradingView === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://s3.tradingview.com/tv.js';
+        script.onload = init;
+        script.onerror = () => {
+            console.error('Failed to load TradingView');
+            setTimeout(init, 500);
+        };
+        document.head.appendChild(script);
+    } else {
+        init();
+    }
+
+})();
+</script>
+
+
+<style>.tradingview-widget-copyright {font-size: 13px !important; line-height: 32px !important; text-align: center !important; vertical-align: middle !important; font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif !important; color: #B2B5BE !important;} .tradingview-widget-copyright .blue-text {color: #2962FF !important;} .tradingview-widget-copyright a {text-decoration: none !important; color: #B2B5BE !important;} .tradingview-widget-copyright a:visited {color: #B2B5BE !important;} .tradingview-widget-copyright a:hover .blue-text {color: #1E53E5 !important;} .tradingview-widget-copyright a:active .blue-text {color: #1848CC !important;} .tradingview-widget-copyright a:visited .blue-text {color: #2962FF !important;}</style></body></html>
