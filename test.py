@@ -1,15 +1,14 @@
 """
-TradingView Chart Extractor - Professional Edition v9.0 (FINAL)
-================================================================
-رویکرد نهایی:
-  ✓ WebSocket parsing (کار می‌کند - 301 کندل + 5 اندیکاتور)
-  ✓ Chart API detection (best-effort با تمام روش‌ها)
-  ✓ Screenshot per chart
-  ✓ Multi-chart concurrent
-  ✓ Diagnostics کامل برای عیب‌یابی
+TradingView Multi-Chart Reader - Professional Edition v12.0
+============================================================
+- راه‌اندازی از طریق localStorage + fallback کلیک روی دکمه‌ها
+- مسیریابی WebSocket با sessionId (چند چارت همزمان)
+- استخراج کامل کندل‌ها، اندیکاتورها، symbol_info، quote
+- گزارش آماری حرفه‌ای (آخرین قیمت، RSI، MACD، تغییرات)
+- معماری تمیز و قابل توسعه
 
 اجرا:
-    python3 chart_extractor_v9.py
+    python3 chart_reader_v12.py
 """
 
 import asyncio
@@ -18,39 +17,44 @@ import os
 import re
 import sys
 import traceback
+from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urlparse, unquote
 
-from playwright.async_api import (
-    async_playwright, Page, Frame, Response, BrowserContext
-)
+from playwright.async_api import async_playwright, Page, BrowserContext, Frame
 
 
 # ======================================================================
-# ⚙️ تنظیمات
+# ⚙️  تنظیمات
 # ======================================================================
 SHELL_URL = "https://source-donii.ir/tread/index.html"
+OUTPUT_DIR = "chart_output_v12"
 
-CHART_CONFIGS = [
+# چارت‌ها (۱، ۲، ۴ یا ۶ — سایت فقط این‌ها را پشتیبانی می‌کند)
+PANELS = [
     {"symbol": "BINANCE:BTCUSDT", "interval": "60"},
     {"symbol": "BINANCE:ETHUSDT", "interval": "60"},
-    {"symbol": "FX:EURUSD", "interval": "60"},
-    {"symbol": "TVC:GOLD", "interval": "60"},
+    {"symbol": "BINANCE:SOLUSDT", "interval": "60"},
+    {"symbol": "TVC:GOLD",        "interval": "60"},
 ]
 
-MAX_CONCURRENT = 2
-WAIT_PAGE_LOAD = 6
-WAIT_CHART_LOAD = 10
-WAIT_FOR_DATA = 35
+PRESET = "momentum"     # clean | basic | momentum | trend | volatility | pro | scalping | swing
+THEME = "dark"
+SYNC = False            # همگام‌سازی نماد بین چارت‌ها
+
+# زمان‌بندی
+WAIT_AFTER_LOAD = 6
+WAIT_FOR_IFRAMES = 25
+WAIT_FOR_DATA = 45
+MIN_CANDLES_PER_SYMBOL = 50
+
 HEADLESS = True
-MAX_CANDLES = 3000
-OUTPUT_DIR = "chart_output_v9"
 
 
 # ======================================================================
-# 🎨 رنگ‌ها
+# 🎨 رنگ‌ها و لاگ
 # ======================================================================
 class C:
     RESET = "\033[0m"; BOLD = "\033[1m"; DIM = "\033[2m"
@@ -75,49 +79,54 @@ def section(title: str) -> None:
 def banner() -> None:
     print()
     print(f"{C.CYN}╔{'═' * 76}╗{C.RESET}")
-    print(f"{C.CYN}║{C.BOLD}{C.WHT}   📊  TradingView Chart Extractor - v9.0 FINAL   {C.RESET}{C.CYN}║{C.RESET}")
+    print(f"{C.CYN}║{C.BOLD}{C.WHT}   📊  TradingView Multi-Chart Reader  v12.0   {C.RESET}{C.CYN}║{C.RESET}")
     print(f"{C.CYN}╚{'═' * 76}╝{C.RESET}")
     print()
 
 
 # ======================================================================
-# 🧩 پارسر WebSocket
+# 🧩 پارسر WebSocket با مسیریابی sessionId
 # ======================================================================
 class TVWebSocketParser:
-    """پارسر Socket.IO TradingView"""
+    """
+    پارسر پیام‌های Socket.IO TradingView.
+    هر chart_create_session یک sessionId دارد که به یک symbol متصل می‌شود.
+    """
 
     def __init__(self):
-        self.candles: dict[float, dict] = {}
-        self.indicator_values: dict[str, dict[float, list]] = {}
-        self.symbol_info: dict = {}
-        self.quote: dict = {}
-        self.study_defs: dict[str, dict] = {}
-        self.types_count: dict[str, int] = {}
+        self.sessions: dict[str, dict] = {}                 # sessionId → {symbol}
+        self.candles: dict[str, dict] = {}                  # symbol → {time: candle}
+        self.indicators: dict[str, dict] = {}               # symbol → {studyId: {time: [v]}}
+        self.study_defs: dict[str, dict] = {}               # symbol → {studyId: {type, inputs}}
+        self.symbol_info: dict[str, dict] = {}              # symbol → info
+        self.quote: dict[str, dict] = {}                    # symbol → quote
+        self.last_update: dict[str, float] = {}             # symbol → timestamp
+        self.types_count: dict[str, int] = defaultdict(int)
         self.messages_count = 0
-        self.last_update_ts = 0.0
 
+    # ------------------------------------------------------------------
     def parse_raw(self, raw: str) -> None:
-        for msg in self._split(raw):
-            self._handle(msg)
+        for msg in self._split_frames(raw):
+            try:
+                self._handle(msg)
+            except Exception:
+                pass
 
-    def _split(self, raw: str) -> list[dict]:
+    def _split_frames(self, raw: str) -> list[dict]:
         out = []
         i, n = 0, len(raw)
         while i < n:
             if raw.startswith("~h~", i):
                 j = raw.find("~", i + 3)
-                if j == -1:
-                    break
+                if j == -1: break
                 i = j + 1
                 continue
             if not raw.startswith("~m~", i):
                 j = raw.find("~m~", i)
-                if j == -1:
-                    break
+                if j == -1: break
                 i = j
             j = raw.find("~m~", i + 3)
-            if j == -1:
-                break
+            if j == -1: break
             try:
                 length = int(raw[i + 3:j])
             except ValueError:
@@ -125,8 +134,7 @@ class TVWebSocketParser:
                 continue
             start = j + 3
             end = start + length
-            if end > n:
-                break
+            if end > n: break
             try:
                 out.append(json.loads(raw[start:end]))
             except json.JSONDecodeError:
@@ -134,67 +142,120 @@ class TVWebSocketParser:
             i = end
         return out
 
+    # ------------------------------------------------------------------
     def _handle(self, msg: dict) -> None:
-        if not isinstance(msg, dict):
-            return
+        if not isinstance(msg, dict): return
         self.messages_count += 1
         m = msg.get("m", "?")
-        self.types_count[m] = self.types_count.get(m, 0) + 1
+        self.types_count[m] += 1
         p = msg.get("p", [])
+
+        if m == "chart_create_session":
+            self._on_create_session(p)
+        elif m == "resolve_symbol":
+            self._on_resolve_symbol(p)
+        elif m == "symbol_resolved":
+            self._on_symbol_resolved(p)
+        elif m in ("du", "timescale_update"):
+            self._on_data(p)
+        elif m == "qsd":
+            self._on_quote(p)
+        elif m == "create_study":
+            self._on_create_study(p)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _parse_hash(raw: str) -> Optional[str]:
+        """استخراج symbol از رشته‌ی '={"symbol":"..."}'"""
+        if not isinstance(raw, str) or not raw.startswith("="):
+            return None
         try:
-            if m == "symbol_resolved":
-                if len(p) >= 3 and isinstance(p[2], dict):
-                    self.symbol_info = p[2]
-            elif m in ("du", "timescale_update"):
-                self._on_data(p)
-            elif m == "qsd":
-                if len(p) >= 2 and isinstance(p[1], dict):
-                    v = p[1].get("v", {})
-                    if isinstance(v, dict):
-                        self.quote.update(v)
-            elif m == "create_study":
-                if len(p) >= 5:
-                    self.study_defs[p[1]] = {
-                        "type": str(p[4]).split("@")[0],
-                        "inputs": p[5] if len(p) > 5 and isinstance(p[5], dict) else {},
-                    }
+            return json.loads(raw[1:]).get("symbol")
         except Exception:
-            pass
+            return None
+
+    def _on_create_session(self, p: list) -> None:
+        if p and isinstance(p[0], str):
+            self.sessions[p[0]] = {"symbol": None}
+
+    def _on_resolve_symbol(self, p: list) -> None:
+        if len(p) < 3: return
+        sid = p[0]
+        symbol = self._parse_hash(p[2])
+        if sid in self.sessions and symbol:
+            self.sessions[sid]["symbol"] = symbol
+            self.candles.setdefault(symbol, {})
+            self.indicators.setdefault(symbol, {})
+            self.study_defs.setdefault(symbol, {})
+
+    def _on_symbol_resolved(self, p: list) -> None:
+        if len(p) < 3 or not isinstance(p[2], dict): return
+        sid = p[0]
+        info = p[2]
+        symbol = self.sessions.get(sid, {}).get("symbol") \
+                 or info.get("pro_name") or info.get("full_name")
+        if symbol:
+            self.symbol_info[symbol] = info
 
     def _on_data(self, p: list) -> None:
-        if len(p) < 2 or not isinstance(p[1], dict):
-            return
-        self.last_update_ts = datetime.now(timezone.utc).timestamp()
+        if len(p) < 2 or not isinstance(p[1], dict): return
+        sid = p[0]
+        symbol = self.sessions.get(sid, {}).get("symbol")
+        if not symbol: return
+        self.last_update[symbol] = datetime.now(timezone.utc).timestamp()
 
-        for sid, data in p[1].items():
-            if not isinstance(data, dict):
-                continue
+        candles = self.candles.setdefault(symbol, {})
+        indicators = self.indicators.setdefault(symbol, {})
+
+        for series_id, data in p[1].items():
+            if not isinstance(data, dict): continue
             bars = data.get("s")
             if not isinstance(bars, list):
                 bars = data.get("st")
-            if not isinstance(bars, list):
-                continue
+            if not isinstance(bars, list): continue
             for bar in bars:
-                if not isinstance(bar, dict):
-                    continue
+                if not isinstance(bar, dict): continue
                 v = bar.get("v")
-                if not isinstance(v, list) or len(v) < 2:
-                    continue
+                if not isinstance(v, list) or len(v) < 2: continue
                 try:
                     t = float(v[0])
                 except (ValueError, TypeError):
                     continue
-                if sid == "sds_1" and len(v) >= 6:
-                    self.candles[t] = {
+
+                if series_id == "sds_1" and len(v) >= 6:
+                    candles[t] = {
                         "time": int(t),
                         "open": self._num(v[1]), "high": self._num(v[2]),
                         "low": self._num(v[3]), "close": self._num(v[4]),
                         "volume": self._num(v[5]),
                     }
                 else:
-                    self.indicator_values.setdefault(sid, {})[t] = [
+                    indicators.setdefault(series_id, {})[t] = [
                         self._num(x) for x in v[1:]
                     ]
+
+    def _on_quote(self, p: list) -> None:
+        if len(p) < 2 or not isinstance(p[1], dict): return
+        q = p[1]
+        raw_n = q.get("n", "")
+        symbol = self._parse_hash(raw_n) if isinstance(raw_n, str) else None
+        if not symbol and isinstance(raw_n, str) and ":" in raw_n:
+            symbol = raw_n
+        v = q.get("v", {})
+        if symbol and isinstance(v, dict):
+            self.quote.setdefault(symbol, {}).update(v)
+
+    def _on_create_study(self, p: list) -> None:
+        if len(p) < 5: return
+        sid = p[0]
+        study_id = p[1]
+        stype = str(p[4]).split("@")[0]
+        inputs = p[5] if len(p) > 5 and isinstance(p[5], dict) else {}
+        symbol = self.sessions.get(sid, {}).get("symbol")
+        if symbol:
+            self.study_defs.setdefault(symbol, {})[study_id] = {
+                "type": stype, "inputs": inputs,
+            }
 
     @staticmethod
     def _num(x):
@@ -203,60 +264,143 @@ class TVWebSocketParser:
         except (ValueError, TypeError):
             return x
 
-    def candles_sorted(self) -> list[dict]:
-        return [self.candles[t] for t in sorted(self.candles.keys())]
+    # ------------------------------------------------------------------
+    def get_symbol_data(self, symbol: str, max_points: int = 500) -> dict:
+        """داده‌ی کامل برای یک symbol"""
+        raw_candles = self.candles.get(symbol, {})
+        raw_inds = self.indicators.get(symbol, {})
+        defs = self.study_defs.get(symbol, {})
 
-    def indicators_sorted(self, max_pts: int = 500) -> dict[str, dict]:
-        out = {}
-        for sid, tv_map in self.indicator_values.items():
-            meta = self.study_defs.get(sid, {})
+        ind_out = {}
+        for sid, tv_map in raw_inds.items():
+            meta = defs.get(sid, {})
             keys = sorted(tv_map.keys())
             pts = [{"time": int(t), "values": tv_map[t]} for t in keys]
-            if len(pts) > max_pts:
-                pts = pts[-max_pts:]
-            out[sid] = {
+            if len(pts) > max_points:
+                pts = pts[-max_points:]
+            ind_out[sid] = {
                 "type": meta.get("type", "unknown"),
                 "inputs": meta.get("inputs", {}),
                 "points_count": len(pts),
                 "points": pts,
             }
-        return out
+
+        return {
+            "candles": [raw_candles[t] for t in sorted(raw_candles.keys())],
+            "indicators": ind_out,
+            "symbol_info": self.symbol_info.get(symbol, {}),
+            "quote": self.quote.get(symbol, {}),
+            "last_update_ts": self.last_update.get(symbol, 0),
+        }
+
+    def known_symbols(self) -> list[str]:
+        return sorted(self.sessions[s]["symbol"] for s in self.sessions
+                      if self.sessions[s].get("symbol"))
 
 
 # ======================================================================
-# 📊 مدل نتیجه
+# 📊 مدل خروجی
 # ======================================================================
 @dataclass
-class ChartResult:
+class ChartExtraction:
     config: dict = field(default_factory=dict)
-    iframe_info: dict = field(default_factory=dict)
-    chart_api: dict = field(default_factory=dict)
-    api_data: dict = field(default_factory=dict)
-    candles_api: list = field(default_factory=list)
-    candles_ws: list = field(default_factory=list)
+    iframe_url: str = ""
+    iframe_interval: str = ""
+    iframe_studies_raw: str = ""
+    actual_ws_symbol: str = ""
+    match: bool = False
+    candles_count: int = 0
+    indicators_count: int = 0
+    candles: list = field(default_factory=list)
     indicators: dict = field(default_factory=dict)
     symbol_info: dict = field(default_factory=dict)
     quote: dict = field(default_factory=dict)
-    study_defs: dict = field(default_factory=dict)
+    statistics: dict = field(default_factory=dict)
     canvas_info: list = field(default_factory=list)
-    ws_types: dict = field(default_factory=dict)
-    ws_count: int = 0
-    screenshot: str = ""
-    errors: list = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    api_diag: dict = field(default_factory=dict)
-    duration_sec: float = 0.0
 
 
 # ======================================================================
-# 🎯 خواننده تک چارت
+# 📊 محاسبه‌ی آمار حرفه‌ای
 # ======================================================================
-class SingleChartReader:
-    def __init__(self, config: dict, shell_url: str, idx: int = 0):
-        self.config = config
+class StatsCalculator:
+    """محاسبه‌ی آمار کلیدی از کندل‌ها و اندیکاتورها"""
+
+    @staticmethod
+    def compute(candles: list[dict], indicators: dict, quote: dict) -> dict:
+        if not candles:
+            return {}
+
+        last = candles[-1]
+        first = candles[0]
+        closes = [c["close"] for c in candles]
+        highs = [c["high"] for c in candles]
+        lows = [c["low"] for c in candles]
+        volumes = [c["volume"] for c in candles if c.get("volume") is not None]
+
+        stats: dict[str, Any] = {
+            "candles": len(candles),
+            "time_from": first["time"],
+            "time_to": last["time"],
+            "time_from_iso": datetime.fromtimestamp(
+                first["time"], tz=timezone.utc).isoformat(),
+            "time_to_iso": datetime.fromtimestamp(
+                last["time"], tz=timezone.utc).isoformat(),
+
+            "last": {
+                "open": last["open"], "high": last["high"],
+                "low": last["low"], "close": last["close"],
+                "volume": last.get("volume"),
+            },
+            "high_max": max(highs),
+            "low_min": min(lows),
+            "close_max": max(closes),
+            "close_min": min(closes),
+            "average_close": sum(closes) / len(closes),
+            "range": max(highs) - min(lows),
+        }
+        if volumes:
+            stats["volume_total"] = sum(volumes)
+            stats["volume_avg"] = sum(volumes) / len(volumes)
+            stats["volume_max"] = max(volumes)
+
+        # تغییرات نسبت به کندل اول
+        if first["close"]:
+            change = last["close"] - first["close"]
+            stats["change_absolute"] = round(change, 8)
+            stats["change_percent"] = round(change / first["close"] * 100, 4)
+
+        # آخرین مقادیر اندیکاتورها
+        latest_indicators = {}
+        for sid, ind in indicators.items():
+            if isinstance(ind, dict) and ind.get("points"):
+                last_pt = ind["points"][-1]
+                latest_indicators[ind.get("type", sid)] = {
+                    "time": last_pt["time"],
+                    "values": last_pt["values"],
+                }
+        stats["latest_indicators"] = latest_indicators
+
+        # Quote info
+        if quote:
+            stats["quote_lp"] = quote.get("lp")
+            stats["quote_ch"] = quote.get("ch")
+            stats["quote_chp"] = quote.get("chp")
+            stats["quote_volume"] = quote.get("volume")
+            stats["quote_high"] = quote.get("high_price")
+            stats["quote_low"] = quote.get("low_price")
+
+        return stats
+
+
+# ======================================================================
+# 🎯 خواننده‌ی اصلی
+# ======================================================================
+class TradingViewMultiChartReader:
+    def __init__(self, panels: list[dict], shell_url: str, output_dir: str):
+        self.panels = panels
         self.shell_url = shell_url
-        self.idx = idx
-        self.prefix = f"C{idx+1}"
+        self.output_dir = output_dir
+        self.ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         self.parser = TVWebSocketParser()
         self.errors: list[dict] = []
         self.warnings: list[str] = []
@@ -267,13 +411,35 @@ class SingleChartReader:
             "traceback": traceback.format_exc()[:1000],
         })
 
+    # ------------------------------------------------------------------
+    # 🎨 init script قبل از لود صفحه
+    # ------------------------------------------------------------------
+    def _init_script(self) -> str:
+        panels_json = json.dumps(self.panels)
+        return f"""
+            (() => {{
+                try {{
+                    const layout = String({len(self.panels)});
+                    localStorage.setItem('tvp_layout', layout);
+                    localStorage.setItem('tvp_panels', JSON.stringify({panels_json}));
+                    localStorage.setItem('tvp_preset', '{PRESET}');
+                    localStorage.setItem('tvp_sync', '{str(SYNC).lower()}');
+                    localStorage.setItem('tvp_theme', '{THEME}');
+                    console.log('[EXT] localStorage initialized: layout=' + layout);
+                }} catch(e) {{ console.error('[EXT] init err', e); }}
+            }})();
+        """
+
+    # ------------------------------------------------------------------
+    # 📡 WebSocket listener
+    # ------------------------------------------------------------------
     async def _setup_ws(self, page: Page) -> None:
         def on_ws(ws):
             try:
-                ws.on("framereceived", lambda p: asyncio.create_task(
-                    self._on_ws(ws.url, p)))
-                ws.on("framesent", lambda p: asyncio.create_task(
-                    self._on_ws(ws.url, p)))
+                ws.on("framereceived",
+                      lambda p: asyncio.create_task(self._on_ws(ws.url, p)))
+                ws.on("framesent",
+                      lambda p: asyncio.create_task(self._on_ws(ws.url, p)))
             except Exception:
                 pass
         page.on("websocket", on_ws)
@@ -291,433 +457,26 @@ class SingleChartReader:
         except Exception:
             pass
 
-    async def _find_iframe(self, page: Page) -> Optional[Frame]:
-        for attempt in range(5):
-            try:
-                await page.wait_for_selector("iframe", timeout=8000)
-                break
-            except Exception:
-                if attempt == 4:
-                    self.warnings.append("iframe یافت نشد")
-                await page.wait_for_timeout(2000)
-        await page.wait_for_timeout(1500)
-
-        for f in page.frames:
-            if f == page.main_frame:
-                continue
-            if f.url.startswith("http") and "tradingview" in f.url.lower():
-                return f
-        for f in page.frames:
-            if f != page.main_frame and f.url.startswith("http"):
-                return f
-        return None
+    # ------------------------------------------------------------------
+    # 🔧 fallback: کلیک روی دکمه‌ی layout
+    # ------------------------------------------------------------------
+    async def _click_layout_button(self, page: Page, layout: str) -> bool:
+        """اگر localStorage کار نکرد، روی دکمه‌ی layout کلیک می‌کنیم"""
+        try:
+            selector = f'.layout-btn[data-layout="{layout}"]'
+            await page.wait_for_selector(selector, timeout=5000)
+            await page.click(selector)
+            await page.wait_for_timeout(3000)
+            log(f"✅ کلیک روی دکمه‌ی layout={layout}", C.GRN, 2)
+            return True
+        except Exception as e:
+            log(f"⚠️  fallback کلیک ناموفق: {e}", C.YEL, 2)
+            return False
 
     # ------------------------------------------------------------------
-    # Chart API — بهترین تلاش
+    # 🔎 پیدا کردن iframeها و نگاشت symbol
     # ------------------------------------------------------------------
-    async def _find_chart_api(self, frame: Frame) -> dict:
-        """تلاش چندگانه برای پیدا کردن Chart API"""
-        try:
-            return await frame.evaluate(r"""
-                () => {
-                    const out = {
-                        found: false,
-                        source: null,
-                        attempts: [],
-                        diagnostics: {},
-                    };
-
-                    function tryGet(label, getter) {
-                        try {
-                            const v = getter();
-                            if (v && typeof v.getSeries === 'function') {
-                                out.attempts.push({path: label, ok: true});
-                                return v;
-                            }
-                            out.attempts.push({
-                                path: label, ok: false,
-                                kind: v === null ? 'null' :
-                                      v === undefined ? 'undef' : typeof v,
-                            });
-                            return null;
-                        } catch (e) {
-                            out.attempts.push({
-                                path: label, ok: false,
-                                err: String(e).slice(0, 100),
-                            });
-                            return null;
-                        }
-                    }
-
-                    let chart = null, src = null;
-
-                    // === روش 1: TradingViewApi (v4.0) ===
-                    const tvapi = window.TradingViewApi;
-                    if (tvapi) {
-                        out.diagnostics.TradingViewApi = {
-                            type: typeof tvapi,
-                            keys: Object.getOwnPropertyNames(tvapi).slice(0, 40),
-                            has_activeChart: typeof tvapi.activeChart === 'function',
-                        };
-                        if (typeof tvapi.activeChart === 'function') {
-                            chart = tryGet('TradingViewApi.activeChart()',
-                                () => tvapi.activeChart());
-                            if (chart) src = 'TradingViewApi.activeChart()';
-                        }
-                        if (!chart && typeof tvapi.chart === 'function') {
-                            chart = tryGet('TradingViewApi.chart()',
-                                () => tvapi.chart());
-                            if (chart) src = 'TradingViewApi.chart()';
-                        }
-                    }
-
-                    // === روش 2: chartWidget ===
-                    const cw = window.chartWidget;
-                    if (!chart && cw) {
-                        out.diagnostics.chartWidget = {
-                            type: typeof cw,
-                            keys: Object.getOwnPropertyNames(cw).slice(0, 40),
-                            has_activeChart: typeof cw.activeChart === 'function',
-                            has_chart: typeof cw.chart === 'function',
-                            is_function: typeof cw === 'function',
-                        };
-                        if (typeof cw.activeChart === 'function') {
-                            chart = tryGet('chartWidget.activeChart()',
-                                () => cw.activeChart());
-                            if (chart) src = 'chartWidget.activeChart()';
-                        }
-                        if (!chart && typeof cw.chart === 'function') {
-                            chart = tryGet('chartWidget.chart()',
-                                () => cw.chart());
-                            if (chart) src = 'chartWidget.chart()';
-                        }
-                        // اگر خودش chart باشه
-                        if (!chart && typeof cw.getSeries === 'function') {
-                            chart = cw;
-                            src = 'chartWidget (as chart)';
-                        }
-                    }
-
-                    // === روش 3: chartWidgetCollection ===
-                    const cwc = window.chartWidgetCollection;
-                    if (!chart && cwc) {
-                        out.diagnostics.chartWidgetCollection = {
-                            keys: Object.getOwnPropertyNames(cwc).slice(0, 40),
-                        };
-                        // getAll()
-                        if (typeof cwc.getAll === 'function') {
-                            try {
-                                const all = cwc.getAll();
-                                out.diagnostics.cwc_getAll_len =
-                                    Array.isArray(all) ? all.length : 'not-array';
-                                if (Array.isArray(all)) {
-                                    for (let i = 0; i < all.length; i++) {
-                                        const w = all[i];
-                                        if (!w) continue;
-                                        if (typeof w.chart === 'function') {
-                                            chart = tryGet(
-                                                `cwc.getAll()[${i}].chart()`,
-                                                () => w.chart());
-                                        }
-                                        if (!chart && typeof w.activeChart === 'function') {
-                                            chart = tryGet(
-                                                `cwc.getAll()[${i}].activeChart()`,
-                                                () => w.activeChart());
-                                        }
-                                        if (!chart && typeof w.getSeries === 'function') {
-                                            chart = w;
-                                        }
-                                        if (chart) { src = `cwc.getAll()[${i}]`; break; }
-                                    }
-                                }
-                            } catch (e) {
-                                out.diagnostics.cwc_getAll_err = String(e);
-                            }
-                        }
-                        // داخلی‌ها
-                        for (const p of ['_chartWidgetCollection', '_items',
-                                          '_widgets', '_chartWidgets']) {
-                            try {
-                                const inner = cwc[p];
-                                if (inner && typeof inner.getAll === 'function') {
-                                    const all = inner.getAll();
-                                    if (Array.isArray(all) && all.length) {
-                                        for (let i = 0; i < all.length; i++) {
-                                            const w = all[i];
-                                            if (!w) continue;
-                                            if (typeof w.chart === 'function') {
-                                                chart = w.chart();
-                                                if (chart && chart.getSeries) {
-                                                    src = `cwc.${p}.getAll()[${i}].chart()`;
-                                                    break;
-                                                }
-                                            }
-                                            if (typeof w.getSeries === 'function') {
-                                                chart = w;
-                                                src = `cwc.${p}.getAll()[${i}]`;
-                                                break;
-                                            }
-                                        }
-                                        if (chart) break;
-                                    }
-                                }
-                            } catch (e) {}
-                        }
-                    }
-
-                    // === روش 4: tvWidget ===
-                    if (!chart && window.tvWidget) {
-                        const w = window.tvWidget;
-                        if (typeof w.activeChart === 'function') {
-                            chart = tryGet('tvWidget.activeChart()',
-                                () => w.activeChart());
-                            if (chart) src = 'tvWidget.activeChart()';
-                        }
-                        if (!chart && typeof w.chart === 'function') {
-                            chart = tryGet('tvWidget.chart()',
-                                () => w.chart());
-                            if (chart) src = 'tvWidget.chart()';
-                        }
-                    }
-
-                    // === روش 5: جستجوی سطحی window ===
-                    if (!chart) {
-                        const keys = Object.keys(window);
-                        for (const k of keys) {
-                            if (k.length > 50) continue;
-                            try {
-                                const o = window[k];
-                                if (!o || typeof o !== 'object') continue;
-                                if (typeof o.activeChart === 'function') {
-                                    try {
-                                        const c = o.activeChart();
-                                        if (c && typeof c.getSeries === 'function') {
-                                            chart = c;
-                                            src = 'window.' + k + '.activeChart()';
-                                            break;
-                                        }
-                                    } catch (e) {}
-                                }
-                                if (typeof o.chart === 'function') {
-                                    try {
-                                        const c = o.chart();
-                                        if (c && typeof c.getSeries === 'function') {
-                                            chart = c;
-                                            src = 'window.' + k + '.chart()';
-                                            break;
-                                        }
-                                    } catch (e) {}
-                                }
-                                if (typeof o.getSeries === 'function' &&
-                                    typeof o.symbol === 'function') {
-                                    chart = o;
-                                    src = 'window.' + k;
-                                    break;
-                                }
-                            } catch (e) {}
-                        }
-                    }
-
-                    if (chart) {
-                        out.found = true;
-                        out.source = src;
-                    }
-                    return out;
-                }
-            """)
-        except Exception as e:
-            self._err("find_chart_api", e)
-            return {"found": False, "error": str(e)}
-
-    # ------------------------------------------------------------------
-    async def _extract_from_chart(self, frame: Frame) -> dict:
-        try:
-            return await frame.evaluate(f"""
-                () => {{
-                    const out = {{
-                        ok: false, symbol: null, resolution: null,
-                        chart_type: null, last_price: null,
-                        candles: [], candles_total: 0,
-                        studies: [], drawings: [],
-                    }};
-
-                    let chart = null;
-                    // تلاش یکسان با تابع قبلی
-                    const trySources = [
-                        () => window.TradingViewApi && window.TradingViewApi.activeChart && window.TradingViewApi.activeChart(),
-                        () => window.TradingViewApi && window.TradingViewApi.chart && window.TradingViewApi.chart(),
-                        () => window.chartWidget && window.chartWidget.activeChart && window.chartWidget.activeChart(),
-                        () => window.chartWidget && window.chartWidget.chart && window.chartWidget.chart(),
-                        () => window.tvWidget && window.tvWidget.activeChart && window.tvWidget.activeChart(),
-                    ];
-                    for (const f of trySources) {{
-                        try {{
-                            const c = f();
-                            if (c && typeof c.getSeries === 'function') {{
-                                chart = c; break;
-                            }}
-                        }} catch (e) {{}}
-                    }}
-                    if (!chart) return out;
-                    out.ok = true;
-
-                    try {{ out.symbol = chart.symbol(); }} catch(e) {{}}
-                    try {{ out.resolution = chart.resolution(); }} catch(e) {{}}
-                    try {{ out.chart_type = chart.chartType(); }} catch(e) {{}}
-
-                    try {{
-                        const s = chart.getSeries();
-                        if (s) {{
-                            const data = s.data();
-                            if (data && Array.isArray(data)) {{
-                                out.candles_total = data.length;
-                                const lim = data.slice(-{MAX_CANDLES});
-                                out.candles = lim.map(b => ({{
-                                    time: b.time, open: b.open, high: b.high,
-                                    low: b.low, close: b.close, volume: b.volume,
-                                }}));
-                                if (out.candles.length > 0) {{
-                                    out.last_price = out.candles[out.candles.length - 1].close;
-                                }}
-                            }}
-                        }}
-                    }} catch(e) {{}}
-
-                    try {{
-                        out.studies = chart.getAllStudies();
-                    }} catch(e) {{}}
-
-                    try {{
-                        const shapes = chart.getAllShapes();
-                        out.drawings = shapes.map(s => ({{
-                            id: s.id, name: s.name, points: s.points,
-                        }}));
-                    }} catch(e) {{}}
-
-                    return out;
-                }}
-            """)
-        except Exception as e:
-            self._err("extract_chart", e)
-            return {"ok": False, "error": str(e)}
-
-    async def _canvas_info(self, frame: Frame) -> list[dict]:
-        try:
-            return await frame.evaluate("""
-                () => {
-                    const out = [];
-                    document.querySelectorAll('canvas').forEach((c, i) => {
-                        out.push({
-                            index: i, width: c.width, height: c.height,
-                            visible: c.offsetParent !== null,
-                        });
-                    });
-                    return out;
-                }
-            """)
-        except Exception:
-            return []
-
-    async def _screenshot(self, page: Page) -> str:
-        try:
-            path = os.path.join(OUTPUT_DIR, f"screenshot_{self.prefix}.png")
-            await page.screenshot(path=path, full_page=False)
-            return path
-        except Exception as e:
-            self._err("screenshot", e)
-            return ""
-
-    # ------------------------------------------------------------------
-    async def read_single(self, page: Page) -> ChartResult:
-        result = ChartResult(config=self.config)
-        t0 = asyncio.get_event_loop().time()
-        p = self.prefix
-
-        try:
-            await self._setup_ws(page)
-
-            log("باز کردن URL...", C.DIM, p)
-            try:
-                await page.goto(self.shell_url, wait_until="domcontentloaded",
-                                timeout=60000)
-            except Exception as e:
-                self._err("goto", e)
-            await page.wait_for_timeout(WAIT_PAGE_LOAD * 1000)
-
-            iframe = await self._find_iframe(page)
-            if not iframe:
-                self._err("find_iframe", "no iframe")
-                result.errors = self.errors
-                result.warnings = self.warnings
-                return result
-
-            result.iframe_info = self._parse_iframe(iframe.url)
-            log(f"iframe: {iframe.url[:70]}...", C.GRN, p)
-            await page.wait_for_timeout(WAIT_CHART_LOAD * 1000)
-
-            # API detection
-            log("جستجوی Chart API...", C.DIM, p)
-            api = await self._find_chart_api(iframe)
-            result.chart_api = api
-
-            if api.get("found"):
-                log(f"✅ API پیدا شد: {api.get('source')}", C.GRN, p)
-                api_data = await self._extract_from_chart(iframe)
-                result.api_data = api_data
-                result.candles_api = api_data.get("candles", [])
-                log(f"   کندل API: {len(result.candles_api)}", C.GRN, p)
-            else:
-                attempts = api.get("attempts", [])
-                log(f"⚠️  API پیدا نشد ({len(attempts)} تلاش)", C.YEL, p)
-                # چاپ دیاگ خلاصه
-                diag = api.get("diagnostics", {})
-                for key in ("TradingViewApi", "chartWidget", "chartWidgetCollection"):
-                    if key in diag:
-                        info = diag[key]
-                        keys_str = ",".join((info.get("keys") or [])[:6])
-                        log(f"   {key}: keys=[{keys_str}]", C.DIM, p)
-
-            # Canvas info
-            result.canvas_info = await self._canvas_info(iframe)
-            log(f"canvas: {len(result.canvas_info)}", C.DIM, p)
-
-            # Screenshot
-            result.screenshot = await self._screenshot(page)
-
-            # انتظار WS
-            log("جمع‌آوری داده از WS...", C.DIM, p)
-            n_c = 0
-            for _ in range(WAIT_FOR_DATA):
-                await page.wait_for_timeout(1000)
-                n_c = len(self.parser.candles)
-                if n_c > 0 and self.parser.last_update_ts > 0:
-                    idle = datetime.now(timezone.utc).timestamp() - self.parser.last_update_ts
-                    if idle > 5:
-                        break
-
-            result.candles_ws = self.parser.candles_sorted()
-            result.indicators = self.parser.indicators_sorted()
-            result.symbol_info = self.parser.symbol_info
-            result.quote = self.parser.quote
-            result.study_defs = self.parser.study_defs
-            result.ws_types = dict(self.parser.types_count)
-            result.ws_count = self.parser.messages_count
-
-            n_total = len(result.candles_ws) or len(result.candles_api)
-            log(f"📊 نتیجه: کندل={n_total} اندیکاتور={len(result.indicators)} "
-                f"WS={result.ws_count}", C.GRN if n_total > 0 else C.YEL, p)
-
-        except Exception as e:
-            self._err("read_single", e)
-        finally:
-            result.errors = self.errors
-            result.warnings = self.warnings
-            result.duration_sec = round(
-                asyncio.get_event_loop().time() - t0, 2)
-
-        return result
-
-    def _parse_iframe(self, src: str) -> dict:
+    def _parse_iframe_url(self, src: str) -> dict:
         result: dict = {"raw_url": src[:250]}
         try:
             parsed = urlparse(src)
@@ -735,39 +494,97 @@ class SingleChartReader:
             pass
         return result
 
+    async def _find_iframes(self, page: Page) -> dict[str, dict]:
+        """{symbol: {frame, url, interval, studies_raw}}"""
+        result: dict[str, dict] = {}
 
-# ======================================================================
-# 🎯 مدیر
-# ======================================================================
-class MultiChartManager:
-    def __init__(self, configs, shell_url, output_dir):
-        self.configs = configs
-        self.shell_url = shell_url
-        self.output_dir = output_dir
-        self.ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        self.results: list[ChartResult] = []
+        for tick in range(WAIT_FOR_IFRAMES):
+            await page.wait_for_timeout(1000)
+            for f in page.frames:
+                if f == page.main_frame:
+                    continue
+                url = f.url or ""
+                if "tradingview" not in url.lower():
+                    continue
+                info = self._parse_iframe_url(url)
+                sym = info.get("symbol")
+                if sym and sym not in result:
+                    result[sym] = {
+                        "frame": f,
+                        "url": url,
+                        "interval": info.get("interval", ""),
+                        "studies_raw": info.get("studies_raw", ""),
+                    }
+                    log(f"✅ iframe پیدا شد: {sym} (interval={info.get('interval')})",
+                        C.GRN, 2)
 
-    async def _read_one(self, context, config, index):
-        reader = SingleChartReader(config, self.shell_url, idx=index)
-        page = await context.new_page()
+            if len(result) >= len(self.panels):
+                break
+
+        return result
+
+    # ------------------------------------------------------------------
+    # 📸 اسکرین‌شات
+    # ------------------------------------------------------------------
+    async def _screenshot(self, page: Page, suffix: str = "page") -> str:
         try:
-            return await reader.read_single(page)
-        finally:
-            try:
-                await page.close()
-            except Exception:
-                pass
+            path = os.path.join(self.output_dir, f"{suffix}_{self.ts}.png")
+            await page.screenshot(path=path, full_page=False)
+            return path
+        except Exception as e:
+            self._err("screenshot", e)
+            return ""
 
-    async def run(self):
+    # ------------------------------------------------------------------
+    # 🖼️ canvas info
+    # ------------------------------------------------------------------
+    async def _canvas_info(self, frame: Frame) -> list[dict]:
+        try:
+            return await frame.evaluate("""
+                () => {
+                    const out = [];
+                    document.querySelectorAll('canvas').forEach((c, i) => {
+                        out.push({
+                            index: i,
+                            width: c.width, height: c.height,
+                            visible: c.offsetParent !== null,
+                            parentClass: c.parentElement ?
+                                c.parentElement.className : null,
+                        });
+                    });
+                    return out;
+                }
+            """)
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------
+    # 📊 بررسی پنل‌های DOM
+    # ------------------------------------------------------------------
+    async def _count_panels(self, page: Page) -> int:
+        try:
+            return await page.evaluate(
+                "() => document.querySelectorAll('.chart-panel').length"
+            )
+        except Exception:
+            return 0
+
+    # ------------------------------------------------------------------
+    # 🚀 اجرا
+    # ------------------------------------------------------------------
+    async def run(self) -> list[ChartExtraction]:
         banner()
-        log(f"🎯 URL: {self.shell_url}", C.YEL)
-        log(f"📁 خروجی: {self.output_dir}", C.YEL)
-        log(f"📊 چارت‌ها: {len(self.configs)}", C.YEL)
+        log(f"🎯 URL:      {self.shell_url}", C.YEL)
+        log(f"📁 خروجی:   {self.output_dir}", C.YEL)
+        log(f"📊 چارت‌ها:  {len(self.panels)}", C.YEL)
+        log(f"🎨 Preset:  {PRESET} | Theme: {THEME} | Sync: {SYNC}", C.YEL)
         print()
 
         os.makedirs(self.output_dir, exist_ok=True)
 
         async with async_playwright() as p:
+            section("۱. راه‌اندازی مرورگر")
+
             browser = await p.chromium.launch(
                 headless=HEADLESS,
                 args=[
@@ -779,187 +596,393 @@ class MultiChartManager:
             )
 
             ctx = await browser.new_context(
-                user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/124.0.0.0 Safari/537.36"),
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
                 viewport={"width": 1920, "height": 1080},
                 locale="en-US", timezone_id="Asia/Tehran",
                 ignore_https_errors=True,
             )
+
+            # 🔑 init script قبل از هر load
+            await ctx.add_init_script(self._init_script())
             await ctx.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
                 Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
                 window.chrome = { runtime: {}, loadTimes: () => {}, csi: () => {} };
             """)
 
-            sem = asyncio.Semaphore(MAX_CONCURRENT)
+            page = await ctx.new_page()
+            await self._setup_ws(page)
 
-            async def worker(cfg, i):
-                async with sem:
-                    log(f"▶ شروع {cfg['symbol']}", C.BOLD + C.CYN)
+            # ---------- ۲. باز کردن صفحه ----------
+            section("۲. باز کردن صفحه اصلی")
+            try:
+                r = await page.goto(self.shell_url,
+                                    wait_until="domcontentloaded",
+                                    timeout=90000)
+                log(f"✅ پاسخ HTTP: {r.status if r else 'N/A'}", C.GRN, 2)
+            except Exception as e:
+                log(f"⚠️  {e}", C.YEL, 2)
+                self._err("goto", e)
+
+            log(f"⏳ انتظار {WAIT_AFTER_LOAD}s ...", C.CYN, 2)
+            await page.wait_for_timeout(WAIT_AFTER_LOAD * 1000)
+
+            # ---------- ۳. بررسی پنل‌ها + fallback ----------
+            section("۳. بررسی پنل‌ها")
+            panel_count = await self._count_panels(page)
+            log(f"📊 پنل‌های ساخته‌شده: {panel_count} (هدف: {len(self.panels)})",
+                C.CYN, 2)
+
+            if panel_count < len(self.panels):
+                log(f"⚠️  تعداد پنل‌ها کم است. تلاش برای کلیک روی دکمه‌ی layout...",
+                    C.YEL, 2)
+                layout_str = str(len(self.panels))
+                if layout_str not in ("1", "2", "4", "6"):
+                    # نزدیک‌ترین
+                    if len(self.panels) <= 2: layout_str = "2"
+                    elif len(self.panels) <= 4: layout_str = "4"
+                    else: layout_str = "6"
+                await self._click_layout_button(page, layout_str)
+                await page.wait_for_timeout(5000)
+                panel_count = await self._count_panels(page)
+                log(f"📊 بعد از کلیک: {panel_count} پنل", C.CYN, 2)
+
+            # ---------- ۴. پیدا کردن iframeها ----------
+            section("۴. پیدا کردن iframeها")
+            iframes_map = await self._find_iframes(page)
+            log(f"✅ {len(iframes_map)} iframe پیدا شد", C.GRN, 2)
+
+            # ---------- ۵. جمع‌آوری داده WS ----------
+            section(f"۵. جمع‌آوری داده WebSocket (حداکثر {WAIT_FOR_DATA}s)")
+            target_symbols = [p["symbol"] for p in self.panels]
+            start = datetime.now(timezone.utc).timestamp()
+
+            while True:
+                await page.wait_for_timeout(2000)
+                elapsed = datetime.now(timezone.utc).timestamp() - start
+
+                # نوار پیشرفت
+                parts = []
+                for sym in target_symbols:
+                    n = len(self.parser.candles.get(sym, {}))
+                    parts.append(f"{sym.split(':')[-1]}:{n}")
+                print(f"\r  ⏳ {int(elapsed):2d}s | " + " | ".join(parts) + "  ",
+                      end="", flush=True)
+
+                # شرایط خروج
+                if elapsed >= WAIT_FOR_DATA:
+                    break
+
+                all_ready = all(
+                    len(self.parser.candles.get(sym, {})) >= MIN_CANDLES_PER_SYMBOL
+                    for sym in target_symbols
+                )
+                if all_ready and elapsed > 8:
+                    now = datetime.now(timezone.utc).timestamp()
+                    all_idle = all(
+                        now - self.parser.last_update.get(sym, 0) > 5
+                        for sym in target_symbols
+                    )
+                    if all_idle:
+                        break
+
+            print()
+            log(f"✅ جمع‌آوری تمام شد", C.GRN, 2)
+
+            # ---------- ۶. استخراج داده ----------
+            section("۶. استخراج داده‌ها")
+            results: list[ChartExtraction] = []
+
+            for panel in self.panels:
+                sym = panel["symbol"]
+                ws_data = self.parser.get_symbol_data(sym)
+                iframe_info = iframes_map.get(sym, {})
+
+                canvas_info = []
+                if iframe_info.get("frame"):
                     try:
-                        return await self._read_one(ctx, cfg, i)
-                    except Exception as e:
-                        log(f"❌ {e}", C.RED)
-                        empty = ChartResult(config=cfg)
-                        empty.errors.append({"stage": "worker",
-                                              "error": str(e)})
-                        return empty
+                        canvas_info = await self._canvas_info(iframe_info["frame"])
+                    except Exception:
+                        pass
 
-            self.results = await asyncio.gather(
-                *[worker(c, i) for i, c in enumerate(self.configs)])
+                actual_ws_symbol = ws_data["symbol_info"].get("pro_name", "")
+                match = bool(actual_ws_symbol) and (
+                    sym.split(":")[-1] in actual_ws_symbol)
+
+                stats = StatsCalculator.compute(
+                    ws_data["candles"], ws_data["indicators"], ws_data["quote"])
+
+                results.append(ChartExtraction(
+                    config=panel,
+                    iframe_url=iframe_info.get("url", "")[:200],
+                    iframe_interval=iframe_info.get("interval", ""),
+                    iframe_studies_raw=iframe_info.get("studies_raw", ""),
+                    actual_ws_symbol=actual_ws_symbol,
+                    match=match,
+                    candles_count=len(ws_data["candles"]),
+                    indicators_count=len(ws_data["indicators"]),
+                    candles=ws_data["candles"],
+                    indicators=ws_data["indicators"],
+                    symbol_info=ws_data["symbol_info"],
+                    quote=ws_data["quote"],
+                    statistics=stats,
+                    canvas_info=canvas_info,
+                ))
+
+                status = "✅" if match else "❌"
+                log(f"{status} {sym:22s} | "
+                    f"کندل: {len(ws_data['candles']):4d} | "
+                    f"اندیکاتور: {len(ws_data['indicators'])} | "
+                    f"WS: {actual_ws_symbol or 'N/A'}",
+                    C.GRN if match else C.YEL, 2)
+
+            # اسکرین‌شات نهایی
+            await self._screenshot(page, suffix="full_page")
+
+            # ---------- ۷. ذخیره ----------
+            section("۷. ذخیره فایل‌ها")
+            self._save_all(results)
 
             await ctx.close()
             await browser.close()
 
-        section("ذخیره")
-        self._save_all()
-        self._summary()
-        return self.results
+        self._print_summary(results)
+        return results
 
-    def _save_all(self):
+    # ------------------------------------------------------------------
+    # 💾 ذخیره‌سازی
+    # ------------------------------------------------------------------
+    def _save_all(self, results: list[ChartExtraction]) -> None:
+        ts = self.ts
+
         combined = {
             "meta": {
                 "shell_url": self.shell_url,
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                "version": "9.0",
-                "charts_count": len(self.configs),
+                "version": "12.0",
+                "panels_requested": len(self.panels),
+                "panels_extracted": len(results),
+                "preset": PRESET,
+                "theme": THEME,
             },
-            "charts": [asdict(r) for r in self.results],
+            "websocket_summary": {
+                "messages_count": self.parser.messages_count,
+                "types_count": dict(self.parser.types_count),
+                "sessions": {
+                    sid: self.parser.sessions[sid].get("symbol")
+                    for sid in self.parser.sessions
+                },
+                "known_symbols": self.parser.known_symbols(),
+            },
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "charts": [asdict(r) for r in results],
         }
-        path = os.path.join(self.output_dir, f"all_charts_{self.ts}.json")
+        path = os.path.join(self.output_dir, f"all_charts_{ts}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(combined, f, ensure_ascii=False, indent=2, default=str)
-        log(f"✅ جامع: {path}", C.GRN)
+        log(f"✅ جامع:    {path}", C.GRN, 2)
 
-        for i, r in enumerate(self.results):
-            sym = (r.config.get("symbol") or f"chart{i}").replace(":", "_")
-            base = os.path.join(self.output_dir, f"chart_{i:02d}_{sym}_{self.ts}")
+        # جداگانه برای هر symbol
+        for i, r in enumerate(results):
+            sym_key = r.config["symbol"].replace(":", "_")
+            base = os.path.join(self.output_dir, f"chart_{i:02d}_{sym_key}_{ts}")
 
             with open(base + "_full.json", "w", encoding="utf-8") as f:
                 json.dump(asdict(r), f, ensure_ascii=False, indent=2, default=str)
 
-            candles = r.candles_api or r.candles_ws
-            if candles:
+            if r.candles:
                 with open(base + "_candles.json", "w", encoding="utf-8") as f:
-                    json.dump(candles, f, ensure_ascii=False, indent=2)
+                    json.dump(r.candles, f, ensure_ascii=False, indent=2)
 
             if r.indicators:
                 with open(base + "_indicators.json", "w", encoding="utf-8") as f:
-                    json.dump(r.indicators, f, ensure_ascii=False, indent=2, default=str)
+                    json.dump(r.indicators, f, ensure_ascii=False,
+                              indent=2, default=str)
 
-            if r.api_diag:
-                with open(base + "_api_diag.json", "w", encoding="utf-8") as f:
-                    json.dump(r.api_diag, f, ensure_ascii=False, indent=2, default=str)
+            log(f"✅ {r.config['symbol']:22s} "
+                f"(candles={r.candles_count}, ind={r.indicators_count})",
+                C.GRN, 2)
 
-            log(f"✅ {sym}: candles={len(candles)}, ind={len(r.indicators)}", C.GRN)
+        # خلاصه‌ی خوانا
+        self._save_summary(results)
 
-        # summary
-        sp = os.path.join(self.output_dir, f"summary_{self.ts}.txt")
-        with open(sp, "w", encoding="utf-8") as f:
-            f.write("=" * 70 + "\n")
-            f.write("Chart Extractor v9.0 - Summary\n")
-            f.write("=" * 70 + "\n\n")
-            for i, r in enumerate(self.results):
-                f.write(f"[{i+1}] {r.config.get('symbol')}\n")
-                f.write(f"  duration:        {r.duration_sec}s\n")
-                f.write(f"  api_found:       {r.chart_api.get('found')}\n")
-                f.write(f"  api_source:      {r.chart_api.get('source')}\n")
-                f.write(f"  candles_api:     {len(r.candles_api)}\n")
-                f.write(f"  candles_ws:      {len(r.candles_ws)}\n")
-                f.write(f"  indicators:      {len(r.indicators)}\n")
-                f.write(f"  ws_messages:     {r.ws_count}\n")
-                f.write(f"  ws_types:        {r.ws_types}\n")
-                f.write(f"  last_price_ws:   {r.quote.get('lp')}\n")
-                if r.symbol_info:
-                    f.write(f"  symbol_name:     {r.symbol_info.get('description')}\n")
-                    f.write(f"  exchange:        {r.symbol_info.get('exchange')}\n")
-                # API attempts
-                atts = r.chart_api.get("attempts", [])
-                f.write(f"  api_attempts:    {len(atts)}\n")
-                for a in atts[:5]:
-                    f.write(f"    - {a.get('path')}: {'OK' if a.get('ok') else 'FAIL'}\n")
-                # diag
-                diag = r.chart_api.get("diagnostics", {})
-                for k, v in diag.items():
-                    if isinstance(v, dict):
-                        keys = ",".join((v.get("keys") or [])[:8])
-                        f.write(f"  diag.{k}: keys=[{keys}]\n")
+    def _save_summary(self, results: list[ChartExtraction]) -> None:
+        path = os.path.join(self.output_dir, f"summary_{self.ts}.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("=" * 76 + "\n")
+            f.write("📊 TradingView Multi-Chart Reader v12.0 - Summary\n")
+            f.write("=" * 76 + "\n\n")
+            f.write(f"Shell URL:    {self.shell_url}\n")
+            f.write(f"Timestamp:    {datetime.now(timezone.utc).isoformat()}\n")
+            f.write(f"Panels:       {len(results)}/{len(self.panels)}\n")
+            f.write(f"Preset:       {PRESET}\n")
+            f.write(f"Theme:        {THEME}\n\n")
+
+            f.write("─" * 76 + "\n[WebSocket Stats]\n" + "─" * 76 + "\n")
+            f.write(f"Total messages:  {self.parser.messages_count}\n")
+            f.write(f"Message types:   {json.dumps(dict(self.parser.types_count), indent=2)}\n\n")
+
+            for i, r in enumerate(results):
+                f.write("─" * 76 + "\n")
+                f.write(f"[CHART {i+1}] {r.config['symbol']} "
+                        f"(interval={r.config['interval']})\n")
+                f.write("─" * 76 + "\n")
+                f.write(f"Match (config↔WS): {'✅ YES' if r.match else '❌ NO'}\n")
+                f.write(f"WS symbol:         {r.actual_ws_symbol}\n")
+                f.write(f"Candles:           {r.candles_count}\n")
+                f.write(f"Indicators:        {r.indicators_count}\n")
+                f.write(f"Symbol name:       {r.symbol_info.get('description', 'N/A')}\n")
+                f.write(f"Exchange:          {r.symbol_info.get('exchange', 'N/A')}\n\n")
+
+                # آمار
+                st = r.statistics
+                if st:
+                    f.write("  ── Statistics ──\n")
+                    f.write(f"    last close:      {st.get('last', {}).get('close')}\n")
+                    f.write(f"    high max:        {st.get('high_max')}\n")
+                    f.write(f"    low min:         {st.get('low_min')}\n")
+                    f.write(f"    change %:        {st.get('change_percent')}%\n")
+                    f.write(f"    volume total:    {st.get('volume_total')}\n")
+                    f.write(f"    volume avg:      {st.get('volume_avg')}\n\n")
+
+                    # آخرین مقادیر اندیکاتورها
+                    li = st.get("latest_indicators", {})
+                    if li:
+                        f.write("  ── Latest Indicators ──\n")
+                        for name, info in li.items():
+                            f.write(f"    {name}: {info.get('values')}\n")
+                        f.write("\n")
+
+                if r.indicators:
+                    f.write("  ── Indicators Detail ──\n")
+                    for sid, ind in r.indicators.items():
+                        if isinstance(ind, dict):
+                            f.write(f"    {sid}: {ind.get('type')} "
+                                    f"({ind.get('points_count', 0)} points)\n")
                 f.write("\n")
-        log(f"✅ خلاصه: {sp}", C.GRN)
 
-    def _summary(self):
+            if self.errors:
+                f.write("─" * 76 + "\n[ERRORS]\n" + "─" * 76 + "\n")
+                for e in self.errors[:15]:
+                    f.write(f"  - [{e.get('stage')}] {e.get('error')}\n")
+
+        log(f"✅ خلاصه:   {path}", C.GRN, 2)
+
+    # ------------------------------------------------------------------
+    # 📋 خلاصه‌ی ترمینال
+    # ------------------------------------------------------------------
+    def _print_summary(self, results: list[ChartExtraction]) -> None:
         print()
         print(f"{C.GRN}╔{'═' * 76}╗{C.RESET}")
-        print(f"{C.GRN}║{C.BOLD}{C.WHT}          ✅  تمام شد          {C.RESET}{C.GRN}║{C.RESET}")
+        print(f"{C.GRN}║{C.BOLD}{C.WHT}          ✅  استخراج تمام شد          {C.RESET}{C.GRN}║{C.RESET}")
         print(f"{C.GRN}╚{'═' * 76}╝{C.RESET}")
         print()
-        api_n = 0
-        for i, r in enumerate(self.results):
-            api_ok = r.chart_api.get("found", False)
-            if api_ok:
-                api_n += 1
-            n_api = len(r.candles_api)
-            n_ws = len(r.candles_ws)
-            n_ind = len(r.indicators)
-            sym = r.config.get("symbol", f"chart{i}")
-            log(f"{'✅' if (api_ok or n_ws > 10) else '⚠️ '} "
-                f"[{i+1}] {sym:22s} | API:{'✅' if api_ok else '❌'} "
-                f"| کندل API:{n_api:4d} | WS:{n_ws:4d} "
-                f"| اندیکاتور:{n_ind} | {r.duration_sec}s", C.WHT)
+
+        matched = 0
+        for i, r in enumerate(results):
+            if r.match:
+                matched += 1
+            status = "✅" if r.match else "❌"
+            last_close = r.statistics.get("last", {}).get("close", "N/A")
+            log(f"{status} [{i+1}] {r.config['symbol']:22s} | "
+                f"WS: {r.actual_ws_symbol or 'N/A':22s} | "
+                f"کندل: {r.candles_count:4d} | "
+                f"آخرین قیمت: {last_close}",
+                C.WHT)
+
         print()
-        log(f"📊 API: {api_n}/{len(self.results)}", C.CYN)
-        log(f"📁 {os.path.abspath(self.output_dir)}", C.CYN)
+        log(f"📊 چارت‌های موفق: {matched}/{len(results)}", C.CYN)
+        log(f"🔌 پیام‌های WS:  {self.parser.messages_count}", C.CYN)
+        log(f"📁 خروجی:         {os.path.abspath(self.output_dir)}", C.CYN)
+        print()
 
 
 # ======================================================================
-# 🏁 ورودی
+# 🏁 ورودی تعاملی
 # ======================================================================
 async def interactive():
     banner()
     log("📝 Enter = پیش‌فرض\n", C.BOLD)
 
-    log(f"🔗 URL: {SHELL_URL}", C.YEL)
+    log(f"🔗 URL پیش‌فرض: {SHELL_URL}", C.YEL)
     u = input(f"{C.CYN}URL: {C.RESET}").strip()
     url = u if u else SHELL_URL
     if not url.startswith("http"):
         url = "https://" + url
 
-    log(f"\n📈 چارت‌ها: {len(CHART_CONFIGS)} مورد", C.YEL)
-    for i, c in enumerate(CHART_CONFIGS):
-        log(f"   {i+1}. {c['symbol']} | {c.get('interval','60')}", C.WHT)
-    log("   Enter = پیش‌فرض", C.DIM)
-    inp = input(f"{C.CYN}لیست (SYMBOL:INTERVAL,...): {C.RESET}").strip()
-    cfgs = CHART_CONFIGS
+    log(f"\n📈 چارت‌ها ({len(PANELS)} مورد پیش‌فرض):", C.YEL)
+    for i, c in enumerate(PANELS):
+        log(f"   [{i+1}] {c['symbol']:22s} | {c['interval']}", C.WHT)
+    log("\n   Enter = پیش‌فرض", C.DIM)
+    log("   یا: SYMBOL:INTERVAL,SYMBOL:INTERVAL,...", C.DIM)
+    log("   مثال: BINANCE:BTCUSDT:60,BINANCE:ETHUSDT:240,TVC:GOLD:D", C.DIM)
+    inp = input(f"{C.CYN}لیست: {C.RESET}").strip()
+
+    panels = PANELS
     if inp:
-        new_cfgs = []
+        new_panels = []
         for part in inp.split(","):
             part = part.strip()
             if not part: continue
-            if ":" in part:
-                last = part.rfind(":")
-                head, tail = part[:last], part[last+1:]
-                if re.match(r"^\d+$|^[DWM]$", tail):
-                    new_cfgs.append({"symbol": head, "interval": tail})
-                else:
-                    new_cfgs.append({"symbol": part, "interval": "60"})
+            m = re.match(r"^([A-Z0-9_.]+:[A-Z0-9_.]+):([0-9]+|[DWM])$",
+                         part.upper())
+            if m:
+                new_panels.append({
+                    "symbol": m.group(1),
+                    "interval": m.group(2),
+                })
+            elif ":" in part:
+                new_panels.append({"symbol": part.upper(), "interval": "60"})
             else:
-                new_cfgs.append({"symbol": part, "interval": "60"})
-        if new_cfgs:
-            cfgs = new_cfgs
+                new_panels.append({
+                    "symbol": f"BINANCE:{part.upper()}USDT",
+                    "interval": "60",
+                })
+        if new_panels:
+            panels = new_panels
 
-    mgr = MultiChartManager(cfgs, url, OUTPUT_DIR)
-    await mgr.run()
+    # محدودیت سایت: 1/2/4/6
+    if len(panels) not in (1, 2, 4, 6):
+        log(f"\n⚠️  سایت فقط 1, 2, 4 یا 6 چارت را پشتیبانی می‌کند. "
+            f"تعداد {len(panels)} تنظیم می‌شود.", C.YEL)
+        if len(panels) <= 1: panels = panels[:1]
+        elif len(panels) <= 2: panels = panels[:2]
+        elif len(panels) <= 4: panels = panels[:4]
+        else: panels = panels[:6]
+
+    print()
+    log("─" * 60, C.DIM)
+    log(f"🔗 URL:     {url}", C.WHT)
+    log(f"📊 چارت‌ها: {len(panels)}", C.WHT)
+    for i, p in enumerate(panels):
+        log(f"   [{i+1}] {p['symbol']:22s} | {p['interval']}", C.WHT)
+    log("─" * 60, C.DIM)
+    print()
+
+    confirm = input(f"{C.CYN}ادامه؟ (Y/n): {C.RESET}").strip().lower()
+    if confirm and confirm not in ("y", "yes", "بله", "ب"):
+        log("❌ لغو شد.", C.RED)
+        return
+
+    reader = TradingViewMultiChartReader(panels, url, OUTPUT_DIR)
+    await reader.run()
 
 
 def main():
     try:
         asyncio.run(interactive())
     except KeyboardInterrupt:
-        log("\n⚠️ متوقف شد", C.YEL); sys.exit(0)
+        log("\n⚠️ متوقف شد", C.YEL)
+        sys.exit(0)
     except Exception as e:
         log(f"\n❌ {e}", C.RED)
-        traceback.print_exc(); sys.exit(1)
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
